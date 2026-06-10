@@ -9,3 +9,7 @@ captures/
 .cxx/
 *.keystore
 !debug.keystore
+keystore.properties
+
+# Модель Vosk (~88 МБ) — не храним в git, тянется таской ./gradlew fetchVoskModel
+/app/src/main/assets/vosk-model-ru/

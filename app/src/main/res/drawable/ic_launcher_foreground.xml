@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Foreground адаптивной иконки: микрофон внутри кольца-таймера -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Кольцо таймера -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:fillColor="#00000000"
+        android:pathData="M54,56 m-29,0 a29,29 0 1,0 58,0 a29,29 0 1,0 -58,0" />
+
+    <!-- Деления таймера (12, 3, 6, 9 часов) -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M54,29 L54,34 M81,56 L76,56 M54,83 L54,78 M27,56 L32,56" />
+
+    <!-- Кнопка таймера сверху -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M50,21 h8 a2,2 0 0 1 2,2 v3 h-12 v-3 a2,2 0 0 1 2,-2 z" />
+
+    <!-- Капсула микрофона -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,44 m-6,0 a6,6 0 0 1 12,0 v9 a6,6 0 0 1 -12,0 z" />
+
+    <!-- Дуга-держатель микрофона -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M45,52 a9,9 0 0 0 18,0" />
+
+    <!-- Ножка и подставка микрофона -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M54,61 L54,68 M48,70 L60,70" />
+</vector>

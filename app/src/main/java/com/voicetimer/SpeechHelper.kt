@@ -14,9 +14,6 @@ import org.vosk.android.RecognitionListener
 import org.vosk.android.SpeechService
 import java.io.File
 import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.zip.ZipInputStream
 
 class SpeechHelper(
     private val context: Context,
@@ -28,8 +25,8 @@ class SpeechHelper(
 ) : RecognitionListener {
 
     companion object {
-        private const val MODEL_URL =
-            "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"
+        // Модель вшита в APK (app/src/main/assets/vosk-model-ru) — загрузка из сети не нужна
+        private const val ASSET_MODEL_DIR = "vosk-model-ru"
         private const val MODEL_DIR_NAME = "vosk-model-ru"
         private const val SAMPLE_RATE = 16000.0f
     }
@@ -48,61 +45,43 @@ class SpeechHelper(
             if (File(modelDir, "am/final.mdl").exists()) {
                 loadModel(modelDir.absolutePath)
             } else {
-                downloadAndExtract(modelDir)
+                unpackFromAssets(modelDir)
             }
         }
     }
 
-    private suspend fun downloadAndExtract(targetDir: File) {
-        val zipFile = File(context.cacheDir, "vosk-ru.zip")
+    // Распаковывает модель из assets в приватную папку приложения (один раз после установки)
+    private suspend fun unpackFromAssets(targetDir: File) {
         try {
-            // Скачиваем архив
-            val connection = URL(MODEL_URL).openConnection() as HttpURLConnection
-            val total = connection.contentLength.toLong()
-            var downloaded = 0L
+            // Считаем общее число файлов для прогресса
+            val allFiles = listAssetFiles(ASSET_MODEL_DIR)
+            val total = allFiles.size.coerceAtLeast(1)
+            var done = 0
 
-            connection.inputStream.use { input ->
-                FileOutputStream(zipFile).use { output ->
-                    val buf = ByteArray(8192)
-                    var read: Int
-                    while (input.read(buf).also { read = it } != -1) {
-                        output.write(buf, 0, read)
-                        downloaded += read
-                        if (total > 0) withContext(Dispatchers.Main) {
-                            onProgress((downloaded * 100 / total).toInt())
-                        }
-                    }
+            for (assetPath in allFiles) {
+                val relativePath = assetPath.removePrefix("$ASSET_MODEL_DIR/")
+                val outFile = File(targetDir, relativePath)
+                outFile.parentFile?.mkdirs()
+                context.assets.open(assetPath).use { input ->
+                    FileOutputStream(outFile).use { input.copyTo(it) }
                 }
+                done++
+                withContext(Dispatchers.Main) { onProgress(done * 100 / total) }
             }
 
-            // Распаковываем
-            ZipInputStream(zipFile.inputStream()).use { zip ->
-                var entry = zip.nextEntry
-                while (entry != null) {
-                    // Убираем первый уровень вложенности (vosk-model-small-ru-0.22/...)
-                    val relativePath = entry.name.substringAfter('/')
-                    if (relativePath.isNotEmpty()) {
-                        val outFile = File(targetDir, relativePath)
-                        if (entry.isDirectory) {
-                            outFile.mkdirs()
-                        } else {
-                            outFile.parentFile?.mkdirs()
-                            FileOutputStream(outFile).use { zip.copyTo(it) }
-                        }
-                    }
-                    zip.closeEntry()
-                    entry = zip.nextEntry
-                }
-            }
-
-            zipFile.delete()
             loadModel(targetDir.absolutePath)
 
         } catch (e: Exception) {
-            zipFile.delete()
             targetDir.deleteRecursively()
-            withContext(Dispatchers.Main) { onError("Ошибка загрузки модели: ${e.message}") }
+            withContext(Dispatchers.Main) { onError("Ошибка распаковки модели: ${e.message}") }
         }
+    }
+
+    // Рекурсивно собирает пути всех файлов внутри каталога assets
+    private fun listAssetFiles(dir: String): List<String> {
+        val children = context.assets.list(dir) ?: return emptyList()
+        if (children.isEmpty()) return listOf(dir) // это файл, а не папка
+        return children.flatMap { listAssetFiles("$dir/$it") }
     }
 
     private suspend fun loadModel(path: String) {
