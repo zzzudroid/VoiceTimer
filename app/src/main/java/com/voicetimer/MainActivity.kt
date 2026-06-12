@@ -1,9 +1,14 @@
 package com.voicetimer
 
 import android.Manifest
+import android.app.AlarmManager
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -11,24 +16,35 @@ import androidx.activity.viewModels
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.core.content.ContextCompat
-import com.voicetimer.ui.MainScreen
+import com.voicetimer.ui.AppRoot
 
 class MainActivity : ComponentActivity() {
 
-    private val viewModel: TimerViewModel by viewModels()
+    private val timerViewModel: TimerViewModel by viewModels()
+    private val remindViewModel: RemindViewModel by viewModels()
+
+    // Действие, которое нужно выполнить после выдачи разрешения на микрофон
+    private var pendingMicAction: (() -> Unit)? = null
 
     private val micPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { granted -> if (granted) viewModel.toggleListening() }
+    ) { granted ->
+        if (granted) pendingMicAction?.invoke()
+        pendingMicAction = null
+    }
 
     private val notifPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* уведомления опциональны */ }
 
+    private val calendarPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { /* при отказе напоминание просто не попадёт в календарь */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Android 13+ требует явного разрешения на уведомления
+        // Android 13+ — разрешение на уведомления
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
             != PackageManager.PERMISSION_GRANTED
@@ -36,11 +52,19 @@ class MainActivity : ComponentActivity() {
             notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
+        // Android 12+ — право на точные будильники (иначе напоминания сдвигаются)
+        ensureExactAlarmPermission()
+
+        // Перепланируем напоминания на случай, если приложение давно не открывали
+        com.voicetimer.remind.ReminderScheduler.rescheduleAll(applicationContext)
+
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
-                MainScreen(
-                    viewModel = viewModel,
-                    onMicClick = ::handleMicClick
+                AppRoot(
+                    timerViewModel = timerViewModel,
+                    remindViewModel = remindViewModel,
+                    onTimerMic = { withMic { timerViewModel.toggleListening() } },
+                    onRemindMic = { withMic { remindViewModel.toggleListening() } }
                 )
             }
         }
@@ -48,15 +72,39 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        viewModel.stopListening()
+        timerViewModel.stopListening()
+        remindViewModel.stopListening()
     }
 
-    private fun handleMicClick() {
-        val permission = Manifest.permission.RECORD_AUDIO
-        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
-            viewModel.toggleListening()
+    // Запрашивает разрешение на микрофон при необходимости и выполняет действие
+    private fun withMic(action: () -> Unit) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            action()
         } else {
-            micPermissionLauncher.launch(permission)
+            pendingMicAction = action
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    // Запрос разрешения на запись в календарь (вызывается из UI при включении опции)
+    fun requestCalendarPermission() {
+        calendarPermissionLauncher.launch(
+            arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
+        )
+    }
+
+    private fun ensureExactAlarmPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            if (!am.canScheduleExactAlarms()) {
+                runCatching {
+                    startActivity(
+                        Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName"))
+                    )
+                }
+            }
         }
     }
 }
