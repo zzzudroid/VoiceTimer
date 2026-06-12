@@ -18,11 +18,17 @@ object TimeParser {
         "тридцать" to 30, "сорок" to 40, "пятьдесят" to 50, "шестьдесят" to 60
     )
 
-    private val numPart = buildString {
-        append("""(\d+|""")
-        append(wordNumbers.keys.joinToString("|") { Regex.escape(it) })
+    // Одно число: цифры или слово. Слова — по убыванию длины,
+    // чтобы «девятнадцать» не матчилось как «девять».
+    private val singleNum = buildString {
+        append("""(?:\d+|""")
+        append(wordNumbers.keys.sortedByDescending { it.length }.joinToString("|") { Regex.escape(it) })
         append(")")
     }
+
+    // Перед единицей измерения может стоять составное числительное:
+    // «сорок девять» = 40 + 9, «двадцать пять» = 25 и т.п.
+    private val numPart = """($singleNum(?:\s+$singleNum)*)"""
 
     fun parse(input: String): ParseResult? {
         val text = input.lowercase().trim()
@@ -81,5 +87,15 @@ object TimeParser {
         return ParseResult(millis, label)
     }
 
-    private fun parseNum(s: String): Int? = s.toIntOrNull() ?: wordNumbers[s]
+    // Складывает токены составного числительного: «сорок девять» → 40 + 9 = 49
+    private fun parseNum(s: String): Int? {
+        val tokens = s.trim().split(Regex("""\s+""")).filter { it.isNotEmpty() }
+        if (tokens.isEmpty()) return null
+        var sum = 0
+        for (t in tokens) {
+            val v = t.toIntOrNull() ?: wordNumbers[t] ?: return null
+            sum += v
+        }
+        return sum
+    }
 }

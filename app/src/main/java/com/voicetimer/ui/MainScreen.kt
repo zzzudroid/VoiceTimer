@@ -19,6 +19,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.voicetimer.TimerState
 import com.voicetimer.TimerViewModel
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun MainScreen(
@@ -36,6 +40,22 @@ fun MainScreen(
     val downloadProgress by viewModel.downloadProgress.collectAsState()
     val isAlarmRinging   by viewModel.isAlarmRinging.collectAsState()
     val actionLabel      by viewModel.actionLabel.collectAsState()
+
+    // Тикающее «текущее время» — обновляется раз в секунду, чтобы пересчитывать время напоминания
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(1000L)
+        }
+    }
+
+    // Во сколько по реальным часам сработает напоминание = сейчас + остаток.
+    // Для RUNNING значение стабильно (остаток убывает, время идёт),
+    // для PAUSED корректно «отъезжает» вперёд, пока стоим на паузе.
+    val finishAtLabel = if ((timerState == TimerState.RUNNING || timerState == TimerState.PAUSED) && timeLeft > 0L) {
+        formatClock(now + timeLeft)
+    } else null
 
     val progress by animateFloatAsState(
         targetValue = if (totalTime > 0L) timeLeft.toFloat() / totalTime.toFloat() else 0f,
@@ -100,6 +120,15 @@ fun MainScreen(
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onBackground
                     )
+                    // Часы: во сколько по реальному времени сработает напоминание
+                    if (finishAtLabel != null) {
+                        Text(
+                            text = "🔔 в $finishAtLabel",
+                            color = if (timerState == TimerState.PAUSED) MaterialTheme.colorScheme.onSurfaceVariant
+                                    else MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
                     when (timerState) {
                         TimerState.FINISHED -> Text("Время вышло!", color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodyLarge)
@@ -225,3 +254,7 @@ private fun formatTime(ms: Long): String {
     val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60
     return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec)
 }
+
+// Форматирует абсолютную метку времени (epoch ms) в часы:минуты
+private fun formatClock(epochMs: Long): String =
+    SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(epochMs))
