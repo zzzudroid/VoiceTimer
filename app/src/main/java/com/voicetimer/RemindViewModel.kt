@@ -1,6 +1,7 @@
 package com.voicetimer
 
 import android.app.Application
+import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import com.voicetimer.remind.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,6 +13,9 @@ class RemindViewModel(application: Application) : AndroidViewModel(application) 
     private val app = application
 
     val items = ReminderStore.items
+
+    // Сейчас звонящее напоминание (null → тишины нет) — для баннера в приложении
+    val ringing = ReminderAlarmService.ringing
 
     private val _schedule = MutableStateFlow(ScheduleSettings.load(application))
     val schedule = _schedule.asStateFlow()
@@ -142,6 +146,21 @@ class RemindViewModel(application: Application) : AndroidViewModel(application) 
 
     fun clearCalendarFlag() { _needCalendarPermission.value = false }
     fun clearError() { _errorMessage.value = null }
+
+    // ── Управление звонящим напоминанием из приложения ───────────────────────────
+
+    // «Готово» — остановить сигнал текущего напоминания
+    fun stopRinging() = app.startService(
+        Intent(app, ReminderAlarmService::class.java).apply { action = ReminderAlarmService.ACTION_STOP }
+    )
+
+    // «Отложить» — перенести звонящее напоминание на N минут
+    fun snoozeRinging(minutes: Int = 10) = app.startService(
+        Intent(app, ReminderAlarmService::class.java).apply {
+            action = ReminderAlarmService.ACTION_SNOOZE
+            putExtra(ReminderAlarmService.EXTRA_SNOOZE_MIN, minutes)
+        }
+    )
 
     // ── Голос ─────────────────────────────────────────────────────────────────
 

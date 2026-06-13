@@ -49,6 +49,12 @@ fun AppRoot(
         if (key != selectedTab) onSelectTab(key)
     }
 
+    // Зазвонило напоминание → сразу показываем вкладку с баннером «Готово / Отложить»
+    val ringing by remindViewModel.ringing.collectAsState()
+    LaunchedEffect(ringing) {
+        if (ringing != null && selectedTab != MainActivity.TAB_REMINDERS) onSelectTab(MainActivity.TAB_REMINDERS)
+    }
+
     Scaffold(
         bottomBar = {
             NavigationBar {

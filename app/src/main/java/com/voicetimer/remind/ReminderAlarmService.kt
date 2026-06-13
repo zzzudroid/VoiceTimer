@@ -11,6 +11,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.voicetimer.MainActivity
 import com.voicetimer.R
+import kotlinx.coroutines.flow.MutableStateFlow
 
 // Проигрывает сигнал сработавшего напоминания и показывает уведомление.
 // EXACT — громкий зацикленный сигнал будильника (как у таймера),
@@ -25,7 +26,13 @@ class ReminderAlarmService : Service() {
 
         private const val CHANNEL_EXACT   = "ch_remind_exact"
         private const val CHANNEL_INEXACT = "ch_remind_inexact"
+
+        // Текущее звонящее напоминание — наблюдается из UI, чтобы
+        // показать баннер «Готово / Отложить» прямо в приложении.
+        val ringing = MutableStateFlow<Ringing?>(null)
     }
+
+    data class Ringing(val id: Long, val text: String, val exact: Boolean)
 
     private var mediaPlayer: MediaPlayer? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -57,6 +64,7 @@ class ReminderAlarmService : Service() {
         }
 
         startForeground(notifId(id), buildNotif(r))
+        ringing.value = Ringing(id, r.text.ifBlank { "Время!" }, exact)
 
         if (exact) acquireWakeLock()
         playSound(loud = exact)
@@ -90,6 +98,7 @@ class ReminderAlarmService : Service() {
             ReminderScheduler.schedule(this, next)
         }
         nm().cancel(notifId(currentId))
+        ringing.value = null
         stopSelf()
     }
 
@@ -99,6 +108,7 @@ class ReminderAlarmService : Service() {
         if (markDone && currentId >= 0 && !recurring) ReminderStore.setDone(this, currentId, true)
         stopSound()
         nm().cancel(notifId(currentId))
+        ringing.value = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -170,5 +180,6 @@ class ReminderAlarmService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         stopSound()
+        ringing.value = null
     }
 }

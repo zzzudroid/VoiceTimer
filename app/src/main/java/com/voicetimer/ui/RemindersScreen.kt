@@ -31,10 +31,53 @@ import kotlin.math.abs
 @Composable
 fun RemindersScreen(viewModel: RemindViewModel, onMicClick: () -> Unit) {
     var showList by rememberSaveable { mutableStateOf(false) }
-    if (showList) {
-        AllRemindersView(viewModel, onBack = { showList = false })
-    } else {
-        NewReminderView(viewModel, onMicClick, onOpenList = { showList = true })
+    val ringing by viewModel.ringing.collectAsState()
+
+    Column(Modifier.fillMaxSize()) {
+        // Баннер звонящего напоминания — виден на обоих под-экранах,
+        // позволяет погасить сигнал прямо в приложении, а не только из шторки.
+        ringing?.let { r ->
+            RingingBanner(
+                r,
+                onDone = { viewModel.stopRinging() },
+                onSnooze = { viewModel.snoozeRinging(10) }
+            )
+        }
+        if (showList) {
+            AllRemindersView(viewModel, onBack = { showList = false })
+        } else {
+            NewReminderView(viewModel, onMicClick, onOpenList = { showList = true })
+        }
+    }
+}
+
+// Карточка-баннер с текстом напоминания и кнопками «Готово» / «Отложить».
+@Composable
+private fun RingingBanner(
+    r: com.voicetimer.remind.ReminderAlarmService.Ringing,
+    onDone: () -> Unit,
+    onSnooze: () -> Unit
+) {
+    Card(
+        Modifier.fillMaxWidth().padding(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("⏰ Сейчас звонит", style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onErrorContainer)
+            Text(r.text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onErrorContainer)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = onDone,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("⏹ Готово") }
+                OutlinedButton(onClick = onSnooze, modifier = Modifier.weight(1f)) {
+                    Text("Отложить 10 мин")
+                }
+            }
+        }
     }
 }
 
