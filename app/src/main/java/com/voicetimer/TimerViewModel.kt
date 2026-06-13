@@ -2,6 +2,7 @@ package com.voicetimer
 
 import android.app.Application
 import android.content.Intent
+import com.voicetimer.remind.ScheduleSettings
 import androidx.lifecycle.AndroidViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,7 +36,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     private val _downloadProgress = MutableStateFlow(-1)
     val downloadProgress = _downloadProgress.asStateFlow()
 
-    private val speechHelper = SpeechHelper(
+    private val recognizer = VoiceRecognizer(
         context = application,
         onPartial = { _partialText.value = it },
         onFinal = { text ->
@@ -57,10 +58,12 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             _errorMessage.value = msg
         },
         onModelReady = { _isModelReady.value = true; _downloadProgress.value = -1 },
-        onProgress   = { _downloadProgress.value = it }
+        onProgress   = { _downloadProgress.value = it },
+        continuous = false,  // короткая фраза времени, стоп после паузы
+        cloudEnabled = { ScheduleSettings.load(app).cloudWhenOnline }
     )
 
-    init { _downloadProgress.value = 0; speechHelper.init() }
+    init { _downloadProgress.value = 0; recognizer.init() }
 
     // ── Управление таймером ───────────────────────────────────────────────────
 
@@ -107,19 +110,19 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleListening() {
         if (_isListening.value) {
-            speechHelper.stopListening(); _isListening.value = false; _partialText.value = ""
+            recognizer.stop(); _isListening.value = false; _partialText.value = ""
         } else {
-            _errorMessage.value = null; _isListening.value = true; speechHelper.startListening()
+            _errorMessage.value = null; _isListening.value = true; recognizer.start()
         }
     }
 
     fun stopListening() {
         if (_isListening.value) {
-            speechHelper.stopListening(); _isListening.value = false; _partialText.value = ""
+            recognizer.stop(); _isListening.value = false; _partialText.value = ""
         }
     }
 
     fun clearError() { _errorMessage.value = null }
 
-    override fun onCleared() { super.onCleared(); speechHelper.destroy() }
+    override fun onCleared() { super.onCleared(); recognizer.destroy() }
 }

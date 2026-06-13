@@ -35,6 +35,7 @@ object ReminderStore {
                             type = ReminderType.valueOf(o.optString("type", "EXACT")),
                             done = o.optBoolean("done", false),
                             inCalendar = o.optBoolean("inCalendar", false),
+                            recurrence = RecurrenceType.valueOf(o.optString("recurrence", "NONE")),
                             createdAt = o.optLong("createdAt", System.currentTimeMillis())
                         )
                     )
@@ -55,6 +56,7 @@ object ReminderStore {
                 put("type", r.type.name)
                 put("done", r.done)
                 put("inCalendar", r.inCalendar)
+                put("recurrence", r.recurrence.name)
                 put("createdAt", r.createdAt)
             })
         }

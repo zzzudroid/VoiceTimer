@@ -28,6 +28,10 @@ class RemindViewModel(application: Application) : AndroidViewModel(application) 
     private val _isListening = MutableStateFlow(false)
     val isListening = _isListening.asStateFlow()
 
+    // true → текущий сеанс идёт через облако (Google), false → локальный Vosk
+    private val _usingCloud = MutableStateFlow(false)
+    val usingCloud = _usingCloud.asStateFlow()
+
     private val _isModelReady = MutableStateFlow(false)
     val isModelReady = _isModelReady.asStateFlow()
 
@@ -43,26 +47,29 @@ class RemindViewModel(application: Application) : AndroidViewModel(application) 
     private val _draft = MutableStateFlow("")
     val draft = _draft.asStateFlow()
 
-    private val speechHelper = SpeechHelper(
+    private val recognizer = VoiceRecognizer(
         context = application,
         onPartial = { _partialText.value = it },
         onFinal = { text ->
             _isListening.value = false
             _partialText.value = ""
             _recognizedText.value = text
-            // Не сохраняем сразу — кладём в черновик, пользователь видит предпросмотр и жмёт «Сохранить»
-            _draft.value = if (_draft.value.isBlank()) text else "${_draft.value} $text"
+            // Не сохраняем сразу — кладём в черновик целиком (заменяя прежний), предпросмотр + «Сохранить»
+            _draft.value = text
             _errorMessage.value = null
         },
         onError = { msg -> _isListening.value = false; _partialText.value = ""; _errorMessage.value = msg },
         onModelReady = { _isModelReady.value = true; _downloadProgress.value = -1 },
-        onProgress = { _downloadProgress.value = it }
+        onProgress = { _downloadProgress.value = it },
+        continuous = true,  // слушать до ручной остановки, копить фразы через паузы
+        cloudEnabled = { _schedule.value.cloudWhenOnline },
+        onEngine = { cloud -> _usingCloud.value = cloud }   // обновляем индикатор (в т.ч. при фолбэке)
     )
 
     init {
         ReminderStore.load(application)
         _downloadProgress.value = 0
-        speechHelper.init()
+        recognizer.init()
     }
 
     fun setDraft(s: String) { _draft.value = s; _errorMessage.value = null }
@@ -79,7 +86,7 @@ class RemindViewModel(application: Application) : AndroidViewModel(application) 
             ?: return "Не понял время. Например: «позвонить маме завтра в 9»"
         if (parsed.text.isBlank())
             return "Не понял, о чём напомнить. Например: «купить хлеб вечером»"
-        addReminder(parsed.text, parsed.triggerAt, parsed.type, _schedule.value.calendarByDefault)
+        addReminder(parsed.text, parsed.triggerAt, parsed.type, _schedule.value.calendarByDefault, parsed.recurrence)
         _draft.value = ""
         _recognizedText.value = ""
         _errorMessage.value = null
@@ -88,7 +95,10 @@ class RemindViewModel(application: Application) : AndroidViewModel(application) 
 
     // ── CRUD ────────────────────────────────────────────────────────────────────
 
-    fun addReminder(text: String, triggerAt: Long, type: ReminderType, toCalendar: Boolean) {
+    fun addReminder(
+        text: String, triggerAt: Long, type: ReminderType, toCalendar: Boolean,
+        recurrence: RecurrenceType = RecurrenceType.NONE
+    ) {
         var inCal = false
         if (toCalendar) {
             inCal = runCatching { CalendarHelper.addEvent(app, text, triggerAt) }.getOrDefault(false)
@@ -99,7 +109,8 @@ class RemindViewModel(application: Application) : AndroidViewModel(application) 
             text = text,
             triggerAt = triggerAt,
             type = type,
-            inCalendar = inCal
+            inCalendar = inCal,
+            recurrence = recurrence
         )
         ReminderStore.upsert(app, r)
         ReminderScheduler.schedule(app, r)
@@ -136,18 +147,19 @@ class RemindViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleListening() {
         if (_isListening.value) {
-            speechHelper.stopListening(); _isListening.value = false; _partialText.value = ""
+            recognizer.stop(); _isListening.value = false; _partialText.value = ""
         } else {
-            _errorMessage.value = null; _recognizedText.value = ""
-            _isListening.value = true; speechHelper.startListening()
+            // Новый сеанс — затираем несохранённый черновик и начинаем распознавание заново
+            _errorMessage.value = null; _recognizedText.value = ""; _draft.value = ""; _partialText.value = ""
+            _isListening.value = true; recognizer.start()
         }
     }
 
     fun stopListening() {
         if (_isListening.value) {
-            speechHelper.stopListening(); _isListening.value = false; _partialText.value = ""
+            recognizer.stop(); _isListening.value = false; _partialText.value = ""
         }
     }
 
-    override fun onCleared() { super.onCleared(); speechHelper.destroy() }
+    override fun onCleared() { super.onCleared(); recognizer.destroy() }
 }

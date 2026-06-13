@@ -21,7 +21,10 @@ class SpeechHelper(
     private val onFinal: (String) -> Unit,
     private val onError: (String) -> Unit,
     private val onModelReady: () -> Unit,
-    private val onProgress: (Int) -> Unit   // 0–100, прогресс скачивания модели
+    private val onProgress: (Int) -> Unit,  // 0–100, прогресс скачивания модели
+    // continuous = слушать до ручной остановки, накапливая фразы через паузы
+    // (для напоминаний). false = остановиться после первой паузы (для таймера).
+    private val continuous: Boolean = false
 ) : RecognitionListener {
 
     companion object {
@@ -34,6 +37,7 @@ class SpeechHelper(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var model: Model? = null
     private var speechService: SpeechService? = null
+    private val accumulated = StringBuilder()  // накопленные фразы в continuous-режиме
 
     val isModelReady: Boolean get() = model != null
 
@@ -96,6 +100,7 @@ class SpeechHelper(
     fun startListening() {
         val m = model ?: return
         stopListening()
+        accumulated.clear()
         try {
             val recognizer = Recognizer(m, SAMPLE_RATE)
             speechService = SpeechService(recognizer, SAMPLE_RATE).also {
@@ -120,22 +125,41 @@ class SpeechHelper(
     // --- RecognitionListener ---
 
     override fun onPartialResult(hypothesis: String?) {
-        val text = parseJson(hypothesis) ?: return
-        if (text.isNotBlank()) onPartial(text)
+        val partial = parseField(hypothesis, "partial") ?: return
+        // в continuous-режиме показываем уже накопленное + текущую незавершённую фразу
+        val live = if (continuous) "${accumulated.trim()} $partial".trim() else partial
+        if (live.isNotBlank()) onPartial(live)
     }
 
     override fun onResult(hypothesis: String?) {
         // Vosk вызывает onResult после паузы в речи
-        val text = parseJson(hypothesis) ?: return
-        if (text.isNotBlank()) {
+        val text = parseField(hypothesis, "text") ?: return
+        if (continuous) {
+            // не останавливаемся — копим фразу и продолжаем слушать
+            if (text.isNotBlank()) appendSegment(text)
+            onPartial(accumulated.toString().trim())
+        } else if (text.isNotBlank()) {
             stopListening()
             onFinal(text)
         }
     }
 
     override fun onFinalResult(hypothesis: String?) {
-        val text = parseJson(hypothesis) ?: return
-        if (text.isNotBlank()) onFinal(text)
+        // Вызывается при ручной остановке — отдаём итог
+        val text = parseField(hypothesis, "text")
+        if (continuous) {
+            if (!text.isNullOrBlank()) appendSegment(text)
+            val full = accumulated.toString().trim()
+            accumulated.clear()
+            if (full.isNotBlank()) onFinal(full)
+        } else if (!text.isNullOrBlank()) {
+            onFinal(text)
+        }
+    }
+
+    private fun appendSegment(seg: String) {
+        if (accumulated.isNotEmpty()) accumulated.append(' ')
+        accumulated.append(seg)
     }
 
     override fun onError(exception: Exception?) {
@@ -146,7 +170,7 @@ class SpeechHelper(
         stopListening()
     }
 
-    private fun parseJson(json: String?): String? = runCatching {
-        JSONObject(json ?: return null).optString("text").trim()
+    private fun parseField(json: String?, field: String): String? = runCatching {
+        JSONObject(json ?: return null).optString(field).trim()
     }.getOrNull()
 }

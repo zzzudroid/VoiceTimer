@@ -12,7 +12,9 @@ data class ScheduleHours(
     val night: Int = 22,    // «ночью»
     // куда отнести «неточное» напоминание без части суток (просто «завтра»)
     val defaultHour: Int = 9,
-    val calendarByDefault: Boolean = false
+    val calendarByDefault: Boolean = false,
+    // распознавание: облачное (Google) при наличии интернета, иначе локальный Vosk
+    val cloudWhenOnline: Boolean = true
 )
 
 object ScheduleSettings {
@@ -26,7 +28,8 @@ object ScheduleSettings {
             evening     = p.getInt("evening", 19),
             night       = p.getInt("night", 22),
             defaultHour = p.getInt("defaultHour", 9),
-            calendarByDefault = p.getBoolean("calendarByDefault", false)
+            calendarByDefault = p.getBoolean("calendarByDefault", false),
+            cloudWhenOnline = p.getBoolean("cloudWhenOnline", true)
         )
     }
 
@@ -38,6 +41,7 @@ object ScheduleSettings {
             putInt("night", h.night)
             putInt("defaultHour", h.defaultHour)
             putBoolean("calendarByDefault", h.calendarByDefault)
+            putBoolean("cloudWhenOnline", h.cloudWhenOnline)
             apply()
         }
     }

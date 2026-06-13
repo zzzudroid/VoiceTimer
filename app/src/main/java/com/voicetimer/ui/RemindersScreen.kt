@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.voicetimer.RemindViewModel
+import com.voicetimer.remind.RecurrenceType
 import com.voicetimer.remind.Reminder
 import com.voicetimer.remind.ReminderType
 import java.text.SimpleDateFormat
@@ -44,6 +45,7 @@ private fun NewReminderView(viewModel: RemindViewModel, onMicClick: () -> Unit, 
     val partial by viewModel.partialText.collectAsState()
     val error by viewModel.errorMessage.collectAsState()
     val listening by viewModel.isListening.collectAsState()
+    val usingCloud by viewModel.usingCloud.collectAsState()
     val modelReady by viewModel.isModelReady.collectAsState()
 
     val preview = remember(draft) { if (draft.isBlank()) null else viewModel.previewOf(draft) }
@@ -65,6 +67,12 @@ private fun NewReminderView(viewModel: RemindViewModel, onMicClick: () -> Unit, 
 
         // Предпросмотр распознанного времени
         when {
+            listening ->
+                Text(
+                    "Слушаю… ${if (usingCloud) "Google" else "локально"} · нажмите 🎤, когда закончите",
+                    color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                )
             error != null ->
                 Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
             preview != null -> {
@@ -81,6 +89,10 @@ private fun NewReminderView(viewModel: RemindViewModel, onMicClick: () -> Unit, 
                         relativeRu(System.currentTimeMillis(), preview.triggerAt) +
                             if (preview.type == ReminderType.INEXACT) " · примерно" else "",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (preview.recurrence != RecurrenceType.NONE) Text(
+                        "🔁 повтор: ${recurrenceLabel(preview.recurrence, preview.triggerAt)}",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary
                     )
                 }
             }
@@ -116,7 +128,10 @@ private fun NewReminderView(viewModel: RemindViewModel, onMicClick: () -> Unit, 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(onClick = onOpenList, modifier = Modifier.weight(1f)) { Text("Все напоминания") }
             Button(
-                onClick = { viewModel.saveDraft()?.let { /* ошибка покажется через errorMessage */ } },
+                onClick = {
+                    // null = сохранено успешно → переключаемся в «Все напоминания»
+                    if (viewModel.saveDraft() == null) onOpenList()
+                },
                 enabled = preview != null && preview.text.isNotBlank(),
                 modifier = Modifier.weight(1f)
             ) { Text("Сохранить") }
@@ -130,6 +145,7 @@ private fun AllRemindersView(viewModel: RemindViewModel, onBack: () -> Unit) {
     val items by viewModel.items.collectAsState()
     var tabDone by rememberSaveable { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Reminder?>(null) }
+    var pendingDelete by remember { mutableStateOf<Reminder?>(null) }
 
     Column(Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
@@ -153,7 +169,7 @@ private fun AllRemindersView(viewModel: RemindViewModel, onBack: () -> Unit) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(shown.sortedByDescending { it.triggerAt }, key = { it.id }) { r ->
-                    ReminderRow(r, { viewModel.toggleDone(r.id) }, { editing = r }, { viewModel.delete(r.id) })
+                    ReminderRow(r, { viewModel.toggleDone(r.id) }, { editing = r }, { pendingDelete = r })
                 }
             }
         } else {
@@ -184,7 +200,7 @@ private fun AllRemindersView(viewModel: RemindViewModel, onBack: () -> Unit) {
                                 modifier = Modifier.padding(top = 8.dp, start = 4.dp))
                         }
                         items(list, key = { it.id }) { r ->
-                            ReminderRow(r, { viewModel.toggleDone(r.id) }, { editing = r }, { viewModel.delete(r.id) })
+                            ReminderRow(r, { viewModel.toggleDone(r.id) }, { editing = r }, { pendingDelete = r })
                         }
                     }
                 }
@@ -199,6 +215,20 @@ private fun AllRemindersView(viewModel: RemindViewModel, onBack: () -> Unit) {
             onSave = { text, time, type, _ ->
                 viewModel.updateReminder(r.copy(text = text, triggerAt = time, type = type)); editing = null
             }
+        )
+    }
+
+    pendingDelete?.let { r ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Удалить напоминание?") },
+            text = { Text("«${r.text}» — ${formatShort(r.triggerAt)}") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.delete(r.id); pendingDelete = null }) {
+                    Text("Удалить", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Отмена") } }
         )
     }
 }
@@ -220,6 +250,9 @@ private fun ReminderRow(r: Reminder, onToggleDone: () -> Unit, onEdit: () -> Uni
                                 else MaterialTheme.colorScheme.tertiary)
                     if (r.type == ReminderType.INEXACT) Text("≈", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.tertiary)
+                    if (r.recurrence != RecurrenceType.NONE) Text(
+                        "🔁 ${recurrenceLabel(r.recurrence, r.triggerAt)}",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                     if (r.inCalendar) Icon(Icons.Filled.Event, contentDescription = "В календаре",
                         modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -322,6 +355,26 @@ private fun formatShort(ms: Long): String {
         2 -> "послезавтра в $time"
         else -> SimpleDateFormat("EEE, d MMM", Locale("ru")).format(Date(ms)) + " в $time"
     }
+}
+
+// Короткая подпись периодичности с правильным склонением дня недели
+private fun recurrenceLabel(rec: RecurrenceType, triggerAt: Long): String = when (rec) {
+    RecurrenceType.DAILY -> "каждый день"
+    RecurrenceType.WEEKLY -> {
+        val dow = Calendar.getInstance().apply { timeInMillis = triggerAt }.get(Calendar.DAY_OF_WEEK)
+        when (dow) {
+            Calendar.MONDAY    -> "каждый понедельник"
+            Calendar.TUESDAY   -> "каждый вторник"
+            Calendar.WEDNESDAY -> "каждую среду"
+            Calendar.THURSDAY  -> "каждый четверг"
+            Calendar.FRIDAY    -> "каждую пятницу"
+            Calendar.SATURDAY  -> "каждую субботу"
+            else               -> "каждое воскресенье"
+        }
+    }
+    RecurrenceType.MONTHLY -> "каждый месяц"
+    RecurrenceType.YEARLY -> "каждый год"
+    RecurrenceType.NONE -> ""
 }
 
 // «через 2 дня 3 часа», «через 15 минут», «через 9 месяцев 5 дней»

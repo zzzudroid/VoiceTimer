@@ -38,6 +38,25 @@ fun SettingsScreen(viewModel: RemindViewModel) {
 
         HorizontalDivider()
 
+        Text("Распознавание речи", style = MaterialTheme.typography.titleMedium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(
+                checked = schedule.cloudWhenOnline,
+                onCheckedChange = { viewModel.updateSchedule(schedule.copy(cloudWhenOnline = it)) }
+            )
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text("Облачное распознавание (Google) при интернете")
+                Text(
+                    "Лучше качество; без интернета — локальная модель Vosk",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        HorizontalDivider()
+
         Row(verticalAlignment = Alignment.CenterVertically) {
             Switch(
                 checked = schedule.calendarByDefault,

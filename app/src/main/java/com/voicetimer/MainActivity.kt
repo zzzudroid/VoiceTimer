@@ -15,15 +15,24 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import com.voicetimer.ui.AppRoot
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        const val TAB_TIMER = "timer"
+        const val TAB_REMINDERS = "reminders"
+        const val TAB_SETTINGS = "settings"
+    }
+
     private val timerViewModel: TimerViewModel by viewModels()
     private val remindViewModel: RemindViewModel by viewModels()
 
-    // Действие, которое нужно выполнить после выдачи разрешения на микрофон
+    private var selectedTab by mutableStateOf(TAB_TIMER)
     private var pendingMicAction: (() -> Unit)? = null
 
     private val micPermissionLauncher = registerForActivityResult(
@@ -44,7 +53,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Android 13+ — разрешение на уведомления
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
             != PackageManager.PERMISSION_GRANTED
@@ -52,10 +60,7 @@ class MainActivity : ComponentActivity() {
             notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        // Android 12+ — право на точные будильники (иначе напоминания сдвигаются)
         ensureExactAlarmPermission()
-
-        // Перепланируем напоминания на случай, если приложение давно не открывали
         com.voicetimer.remind.ReminderScheduler.rescheduleAll(applicationContext)
 
         setContent {
@@ -63,6 +68,8 @@ class MainActivity : ComponentActivity() {
                 AppRoot(
                     timerViewModel = timerViewModel,
                     remindViewModel = remindViewModel,
+                    selectedTab = selectedTab,
+                    onSelectTab = { selectedTab = it },
                     onTimerMic = { withMic { timerViewModel.toggleListening() } },
                     onRemindMic = { withMic { remindViewModel.toggleListening() } }
                 )
@@ -76,7 +83,6 @@ class MainActivity : ComponentActivity() {
         remindViewModel.stopListening()
     }
 
-    // Запрашивает разрешение на микрофон при необходимости и выполняет действие
     private fun withMic(action: () -> Unit) {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             == PackageManager.PERMISSION_GRANTED
@@ -88,7 +94,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Запрос разрешения на запись в календарь (вызывается из UI при включении опции)
     fun requestCalendarPermission() {
         calendarPermissionLauncher.launch(
             arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
