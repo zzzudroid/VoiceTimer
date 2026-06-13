@@ -134,7 +134,7 @@ private fun NewReminderView(viewModel: RemindViewModel, onMicClick: () -> Unit, 
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (preview.recurrence != RecurrenceType.NONE) Text(
-                        "🔁 повтор: ${recurrenceLabel(preview.recurrence, preview.triggerAt)}",
+                        "🔁 повтор: ${recurrenceLabel(preview.recurrence, preview.triggerAt, preview.recurrenceInterval)}",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary
                     )
                 }
@@ -294,7 +294,7 @@ private fun ReminderRow(r: Reminder, onToggleDone: () -> Unit, onEdit: () -> Uni
                     if (r.type == ReminderType.INEXACT) Text("≈", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.tertiary)
                     if (r.recurrence != RecurrenceType.NONE) Text(
-                        "🔁 ${recurrenceLabel(r.recurrence, r.triggerAt)}",
+                        "🔁 ${recurrenceLabel(r.recurrence, r.triggerAt, r.recurrenceInterval)}",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                     if (r.inCalendar) Icon(Icons.Filled.Event, contentDescription = "В календаре",
                         modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -400,8 +400,21 @@ private fun formatShort(ms: Long): String {
     }
 }
 
-// Короткая подпись периодичности с правильным склонением дня недели
-private fun recurrenceLabel(rec: RecurrenceType, triggerAt: Long): String = when (rec) {
+// Короткая подпись периодичности с правильным склонением дня недели.
+// interval > 1 → «каждые N дней/недель/месяцев/лет».
+private fun recurrenceLabel(rec: RecurrenceType, triggerAt: Long, interval: Int = 1): String {
+    if (interval > 1) return when (rec) {
+        RecurrenceType.DAILY   -> "каждые " + plural(interval.toLong(), "день", "дня", "дней")
+        RecurrenceType.WEEKLY  -> "каждые " + plural(interval.toLong(), "неделю", "недели", "недель")
+        RecurrenceType.MONTHLY -> "каждые " + plural(interval.toLong(), "месяц", "месяца", "месяцев")
+        RecurrenceType.YEARLY  -> "каждые " + plural(interval.toLong(), "год", "года", "лет")
+        RecurrenceType.NONE    -> ""
+    }
+    return recurrenceLabelEvery(rec, triggerAt)
+}
+
+// «каждый …» (interval = 1)
+private fun recurrenceLabelEvery(rec: RecurrenceType, triggerAt: Long): String = when (rec) {
     RecurrenceType.DAILY -> "каждый день"
     RecurrenceType.WEEKLY -> {
         val dow = Calendar.getInstance().apply { timeInMillis = triggerAt }.get(Calendar.DAY_OF_WEEK)

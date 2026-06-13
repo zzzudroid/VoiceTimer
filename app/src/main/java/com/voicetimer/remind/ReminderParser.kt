@@ -6,7 +6,8 @@ data class ParsedReminder(
     val text: String,
     val triggerAt: Long,
     val type: ReminderType,
-    val recurrence: RecurrenceType = RecurrenceType.NONE
+    val recurrence: RecurrenceType = RecurrenceType.NONE,
+    val recurrenceInterval: Int = 1   // «каждые N …»: 1 = каждый период
 )
 
 // Разбирает фразу вида «позвонить маме завтра в 9 утра» →
@@ -60,23 +61,31 @@ object ReminderParser {
         var explicitTime = false
         var dayResolved = false
         var recurrence = RecurrenceType.NONE
+        var recurrenceInterval = 1
 
-        // ── 0. Повторение: «каждый день/вторник», «каждую неделю», «ежедневно»… ───
+        // ── 0. Повторение: «каждый день/вторник», «каждые три дня», «ежедневно»… ──
+        // ВАЖНО: \w в Java/Kotlin-регэкспах по умолчанию НЕ матчит кириллицу,
+        // поэтому для русских слов используем явный класс [а-яё].
         run {
-            Regex("""ежедневн\w*""").find(text)?.let { recurrence = RecurrenceType.DAILY; cut(it.range) }
-            if (recurrence == RecurrenceType.NONE) Regex("""еженедельн\w*""").find(text)?.let { recurrence = RecurrenceType.WEEKLY; cut(it.range) }
-            if (recurrence == RecurrenceType.NONE) Regex("""ежемесячн\w*""").find(text)?.let { recurrence = RecurrenceType.MONTHLY; cut(it.range) }
-            if (recurrence == RecurrenceType.NONE) Regex("""ежегодн\w*""").find(text)?.let { recurrence = RecurrenceType.YEARLY; cut(it.range) }
+            Regex("""ежедневн[а-яё]*""").find(text)?.let { recurrence = RecurrenceType.DAILY; cut(it.range) }
+            if (recurrence == RecurrenceType.NONE) Regex("""еженедельн[а-яё]*""").find(text)?.let { recurrence = RecurrenceType.WEEKLY; cut(it.range) }
+            if (recurrence == RecurrenceType.NONE) Regex("""ежемесячн[а-яё]*""").find(text)?.let { recurrence = RecurrenceType.MONTHLY; cut(it.range) }
+            if (recurrence == RecurrenceType.NONE) Regex("""ежегодн[а-яё]*""").find(text)?.let { recurrence = RecurrenceType.YEARLY; cut(it.range) }
             if (recurrence == RecurrenceType.NONE) {
-                Regex("""кажд\w+(?:\s+(день|дня|неделю|недел\w+|месяц\w*|год\w*))?""").find(text)?.let { m ->
-                    val unit = m.groupValues[1]
+                // «кажд<ый/ые/ую> [N] <день|неделя|месяц|год|лет|<день недели>>»
+                val wdAlt = weekdays.keys.joinToString("|") { Regex.escape(it.trimEnd(',')) }
+                val unitAlt = """день|дня|дней|недел[а-яё]+|месяц[а-яё]*|год[а-яё]*|года|лет|$wdAlt"""
+                Regex("""кажд[а-яё]+\s+(?:${RuNumbers.numberGroup}\s+)?($unitAlt)""").find(text)?.let { m ->
+                    val n = m.groupValues[1].ifBlank { "1" }.let { RuNumbers.parseCompound(it) ?: 1 }
+                    val unit = m.groupValues[2]
                     recurrence = when {
-                        unit.startsWith("день") || unit.startsWith("дня") -> RecurrenceType.DAILY
-                        unit.startsWith("недел")                          -> RecurrenceType.WEEKLY
-                        unit.startsWith("месяц")                          -> RecurrenceType.MONTHLY
-                        unit.startsWith("год")                            -> RecurrenceType.YEARLY
+                        unit.startsWith("день") || unit.startsWith("дня") || unit.startsWith("дней") -> RecurrenceType.DAILY
+                        unit.startsWith("недел")                                                     -> RecurrenceType.WEEKLY
+                        unit.startsWith("месяц")                                                     -> RecurrenceType.MONTHLY
+                        unit.startsWith("год") || unit == "года" || unit == "лет"                    -> RecurrenceType.YEARLY
                         else -> RecurrenceType.WEEKLY   // «каждый <день недели>» → еженедельно
                     }
+                    recurrenceInterval = n.coerceAtLeast(1)
                     cut(m.range)
                 }
             }
@@ -156,10 +165,17 @@ object ReminderParser {
             }
         }
 
-        // ── 4. Точное время: «в 18:30», «в 9 часов», «в 9» ────────────────────────
+        // ── 4. Точное время: «в 18:30», «в 20 00», «в 9 часов», «в 9» ─────────────
         run {
+            // «в 20 00» / «в 18 30» — часы и минуты через пробел (только с предлогом «в»,
+            // чтобы не спутать с «через 20 минут» или «каждые 3 дня»)
+            val hmSpace = if (!explicitTime) Regex("""в\s+(\d{1,2})\s+(\d{2})(?!\d)""").find(text) else null
             val hm = Regex("""(?:в\s+)?(\d{1,2})[:.](\d{2})""").find(text)
-            if (hm != null) {
+            if (hmSpace != null) {
+                cal.set(Calendar.HOUR_OF_DAY, hmSpace.groupValues[1].toInt().coerceIn(0, 23))
+                cal.set(Calendar.MINUTE, hmSpace.groupValues[2].toInt().coerceIn(0, 59))
+                explicitTime = true; cut(hmSpace.range)
+            } else if (hm != null) {
                 cal.set(Calendar.HOUR_OF_DAY, hm.groupValues[1].toInt().coerceIn(0, 23))
                 cal.set(Calendar.MINUTE, hm.groupValues[2].toInt().coerceIn(0, 59))
                 explicitTime = true; cut(hm.range)
@@ -225,7 +241,7 @@ object ReminderParser {
         }
 
         val cleanText = buildCleanText(text, cuts, original)
-        return ParsedReminder(cleanText, cal.timeInMillis, type, recurrence)
+        return ParsedReminder(cleanText, cal.timeInMillis, type, recurrence, recurrenceInterval)
     }
 
     // «первую/вторую/…/последнюю» → 1..5, последняя = -1

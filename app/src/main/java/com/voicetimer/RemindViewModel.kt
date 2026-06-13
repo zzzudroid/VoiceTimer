@@ -90,7 +90,8 @@ class RemindViewModel(application: Application) : AndroidViewModel(application) 
             ?: return "Не понял время. Например: «позвонить маме завтра в 9»"
         if (parsed.text.isBlank())
             return "Не понял, о чём напомнить. Например: «купить хлеб вечером»"
-        addReminder(parsed.text, parsed.triggerAt, parsed.type, _schedule.value.calendarByDefault, parsed.recurrence)
+        addReminder(parsed.text, parsed.triggerAt, parsed.type, _schedule.value.calendarByDefault,
+            parsed.recurrence, parsed.recurrenceInterval)
         _draft.value = ""
         _recognizedText.value = ""
         _errorMessage.value = null
@@ -101,7 +102,8 @@ class RemindViewModel(application: Application) : AndroidViewModel(application) 
 
     fun addReminder(
         text: String, triggerAt: Long, type: ReminderType, toCalendar: Boolean,
-        recurrence: RecurrenceType = RecurrenceType.NONE
+        recurrence: RecurrenceType = RecurrenceType.NONE,
+        recurrenceInterval: Int = 1
     ) {
         var inCal = false
         if (toCalendar) {
@@ -114,7 +116,8 @@ class RemindViewModel(application: Application) : AndroidViewModel(application) 
             triggerAt = triggerAt,
             type = type,
             inCalendar = inCal,
-            recurrence = recurrence
+            recurrence = recurrence,
+            recurrenceInterval = recurrenceInterval
         )
         ReminderStore.upsert(app, r)
         ReminderScheduler.schedule(app, r)
