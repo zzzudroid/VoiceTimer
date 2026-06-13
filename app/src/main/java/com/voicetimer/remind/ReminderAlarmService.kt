@@ -49,6 +49,13 @@ class ReminderAlarmService : Service() {
         currentId = id
         val exact = r.type == ReminderType.EXACT
 
+        // Повторяющееся — сразу планируем следующий период (серия продолжается)
+        if (r.recurrence != RecurrenceType.NONE) {
+            val next = r.copy(triggerAt = r.nextTrigger(), done = false)
+            ReminderStore.upsert(this, next)
+            ReminderScheduler.schedule(this, next)
+        }
+
         startForeground(notifId(id), buildNotif(r))
 
         if (exact) acquireWakeLock()
@@ -87,7 +94,9 @@ class ReminderAlarmService : Service() {
     }
 
     private fun stopAll(markDone: Boolean) {
-        if (markDone && currentId >= 0) ReminderStore.setDone(this, currentId, true)
+        // У повторяющихся «Готово» не закрывает серию — следующий период уже запланирован
+        val recurring = ReminderStore.byId(currentId)?.recurrence?.let { it != RecurrenceType.NONE } ?: false
+        if (markDone && currentId >= 0 && !recurring) ReminderStore.setDone(this, currentId, true)
         stopSound()
         nm().cancel(notifId(currentId))
         stopForeground(STOP_FOREGROUND_REMOVE)

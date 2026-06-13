@@ -2,7 +2,12 @@ package com.voicetimer.remind
 
 import java.util.Calendar
 
-data class ParsedReminder(val text: String, val triggerAt: Long, val type: ReminderType)
+data class ParsedReminder(
+    val text: String,
+    val triggerAt: Long,
+    val type: ReminderType,
+    val recurrence: RecurrenceType = RecurrenceType.NONE
+)
 
 // Разбирает фразу вида «позвонить маме завтра в 9 утра» →
 //   текст = «Позвонить маме», время = завтра 09:00, тип = EXACT.
@@ -21,6 +26,23 @@ object ReminderParser {
         "понедельник," to Calendar.MONDAY
     )
 
+    // Месяцы (родительный падеж, как в датах: «5 декабря»)
+    private val months = mapOf(
+        "января" to Calendar.JANUARY, "февраля" to Calendar.FEBRUARY, "марта" to Calendar.MARCH,
+        "апреля" to Calendar.APRIL, "мая" to Calendar.MAY, "июня" to Calendar.JUNE,
+        "июля" to Calendar.JULY, "августа" to Calendar.AUGUST, "сентября" to Calendar.SEPTEMBER,
+        "октября" to Calendar.OCTOBER, "ноября" to Calendar.NOVEMBER, "декабря" to Calendar.DECEMBER
+    )
+
+    // Порядковые дни месяца (родительный падеж): «пятого», «двадцать пятого»
+    private val dayOrdinal = mapOf(
+        "первого" to 1, "второго" to 2, "третьего" to 3, "четвёртого" to 4, "четвертого" to 4,
+        "пятого" to 5, "шестого" to 6, "седьмого" to 7, "восьмого" to 8, "девятого" to 9, "десятого" to 10,
+        "одиннадцатого" to 11, "двенадцатого" to 12, "тринадцатого" to 13, "четырнадцатого" to 14,
+        "пятнадцатого" to 15, "шестнадцатого" to 16, "семнадцатого" to 17, "восемнадцатого" to 18,
+        "девятнадцатого" to 19, "двадцатого" to 20, "двадцать" to 20, "тридцатого" to 30, "тридцать" to 30
+    )
+
     // Часть суток → имя слота расписания
     private enum class DayPart { MORNING, DAY, EVENING, NIGHT }
 
@@ -37,6 +59,28 @@ object ReminderParser {
         var type = ReminderType.INEXACT
         var explicitTime = false
         var dayResolved = false
+        var recurrence = RecurrenceType.NONE
+
+        // ── 0. Повторение: «каждый день/вторник», «каждую неделю», «ежедневно»… ───
+        run {
+            Regex("""ежедневн\w*""").find(text)?.let { recurrence = RecurrenceType.DAILY; cut(it.range) }
+            if (recurrence == RecurrenceType.NONE) Regex("""еженедельн\w*""").find(text)?.let { recurrence = RecurrenceType.WEEKLY; cut(it.range) }
+            if (recurrence == RecurrenceType.NONE) Regex("""ежемесячн\w*""").find(text)?.let { recurrence = RecurrenceType.MONTHLY; cut(it.range) }
+            if (recurrence == RecurrenceType.NONE) Regex("""ежегодн\w*""").find(text)?.let { recurrence = RecurrenceType.YEARLY; cut(it.range) }
+            if (recurrence == RecurrenceType.NONE) {
+                Regex("""кажд\w+(?:\s+(день|дня|неделю|недел\w+|месяц\w*|год\w*))?""").find(text)?.let { m ->
+                    val unit = m.groupValues[1]
+                    recurrence = when {
+                        unit.startsWith("день") || unit.startsWith("дня") -> RecurrenceType.DAILY
+                        unit.startsWith("недел")                          -> RecurrenceType.WEEKLY
+                        unit.startsWith("месяц")                          -> RecurrenceType.MONTHLY
+                        unit.startsWith("год")                            -> RecurrenceType.YEARLY
+                        else -> RecurrenceType.WEEKLY   // «каждый <день недели>» → еженедельно
+                    }
+                    cut(m.range)
+                }
+            }
+        }
 
         // ── 1. «через N минут/часов/дней», «через полчаса», «через час» ───────────
         Regex("""через\s+полчаса""").find(text)?.let { m ->
@@ -65,6 +109,39 @@ object ReminderParser {
             Regex("""послезавтра""").find(text)?.let { m -> cal.add(Calendar.DAY_OF_MONTH, 2); dayResolved = true; cut(m.range) }
             if (!dayResolved) Regex("""завтра""").find(text)?.let { m -> cal.add(Calendar.DAY_OF_MONTH, 1); dayResolved = true; cut(m.range) }
             if (!dayResolved) Regex("""сегодня""").find(text)?.let { m -> dayResolved = true; cut(m.range) }
+        }
+
+        // ── 2.5. Дата по месяцу: «25 декабря», «в последнюю субботу декабря» ──────
+        if (!dayResolved) {
+            val monthAlt = months.keys.joinToString("|")
+            val wdAlt = weekdays.keys.joinToString("|") { Regex.escape(it.trimEnd(',')) }
+
+            // Порядковый день недели в месяце: «(первую|…|последнюю) субботу декабря»
+            val ordW = Regex("""(перв\w+|втор\w+|трет\w+|четверт\w+|пят\w+|последн\w+)\s+($wdAlt)\s+($monthAlt)""")
+                .find(text)
+            if (ordW != null) {
+                val ordinal = ordinalIndex(ordW.groupValues[1])
+                val dow = dowOf(ordW.groupValues[2])
+                val month = months[ordW.groupValues[3]]!!
+                if (dow != null) {
+                    setOrdinalWeekdayInMonth(cal, now, month, dow, ordinal)
+                    dayResolved = true; cut(ordW.range)
+                }
+            }
+
+            // Конкретный день месяца: «25 декабря», «пятого декабря»
+            if (!dayResolved) {
+                val dayWord = (dayOrdinal.keys.sortedByDescending { it.length }.joinToString("|") { Regex.escape(it) })
+                val dm = Regex("""((?:\d{1,2}|$dayWord)(?:\s+(?:\d{1,2}|$dayWord))?)\s+($monthAlt)""").find(text)
+                if (dm != null) {
+                    val day = parseDayOfMonth(dm.groupValues[1])
+                    val month = months[dm.groupValues[2]]
+                    if (day in 1..31 && month != null) {
+                        setMonthDay(cal, now, month, day)
+                        dayResolved = true; cut(dm.range)
+                    }
+                }
+            }
         }
 
         // ── 3. День недели: «в среду», «в следующий понедельник» ──────────────────
@@ -126,7 +203,8 @@ object ReminderParser {
         }
 
         // Если совсем ничего временно́го не нашли — это не напоминание
-        if (!dayResolved && !explicitTime && dayPart == null) return null
+        // (но «каждый день» без времени допустим — сработает в час по умолчанию)
+        if (!dayResolved && !explicitTime && dayPart == null && recurrence == RecurrenceType.NONE) return null
 
         // Тип: точное время → EXACT, иначе INEXACT (день/часть суток)
         type = if (explicitTime) ReminderType.EXACT else ReminderType.INEXACT
@@ -147,7 +225,72 @@ object ReminderParser {
         }
 
         val cleanText = buildCleanText(text, cuts, original)
-        return ParsedReminder(cleanText, cal.timeInMillis, type)
+        return ParsedReminder(cleanText, cal.timeInMillis, type, recurrence)
+    }
+
+    // «первую/вторую/…/последнюю» → 1..5, последняя = -1
+    private fun ordinalIndex(w: String): Int = when {
+        w.startsWith("перв")    -> 1
+        w.startsWith("втор")    -> 2
+        w.startsWith("трет")    -> 3
+        w.startsWith("четверт") -> 4
+        w.startsWith("пят")     -> 5
+        w.startsWith("последн") -> -1
+        else -> 1
+    }
+
+    private fun dowOf(word: String): Int? =
+        weekdays.entries.firstOrNull { it.key.trimEnd(',') == word }?.value
+
+    private fun parseDayOfMonth(s: String): Int {
+        var sum = 0
+        for (t in s.trim().split(Regex("""\s+"""))) {
+            val v = t.toIntOrNull() ?: dayOrdinal[t] ?: return -1
+            sum += v
+        }
+        return sum
+    }
+
+    // Устанавливает год/месяц/день для «N <месяца>», выбирая ближайший будущий год
+    private fun setMonthDay(cal: Calendar, now: Long, month: Int, day: Int) {
+        val today = Calendar.getInstance().apply { timeInMillis = now; zeroTime() }
+        var year = today.get(Calendar.YEAR)
+        repeat(2) {
+            val c = Calendar.getInstance().apply { clear(); set(year, month, 1); zeroTime() }
+            c.set(Calendar.DAY_OF_MONTH, day.coerceAtMost(c.getActualMaximum(Calendar.DAY_OF_MONTH)))
+            if (c.timeInMillis >= today.timeInMillis) {
+                cal.set(Calendar.YEAR, year); cal.set(Calendar.MONTH, month)
+                cal.set(Calendar.DAY_OF_MONTH, c.get(Calendar.DAY_OF_MONTH))
+                return
+            }
+            year++
+        }
+    }
+
+    // N-й (или последний) день недели в месяце, ближайший будущий год
+    private fun setOrdinalWeekdayInMonth(cal: Calendar, now: Long, month: Int, dow: Int, ordinal: Int) {
+        val today = Calendar.getInstance().apply { timeInMillis = now; zeroTime() }
+        var year = today.get(Calendar.YEAR)
+        repeat(2) {
+            val c = Calendar.getInstance().apply { clear(); set(year, month, 1); zeroTime() }
+            if (ordinal == -1) {
+                c.set(Calendar.DAY_OF_MONTH, c.getActualMaximum(Calendar.DAY_OF_MONTH))
+                while (c.get(Calendar.DAY_OF_WEEK) != dow) c.add(Calendar.DAY_OF_MONTH, -1)
+            } else {
+                while (c.get(Calendar.DAY_OF_WEEK) != dow) c.add(Calendar.DAY_OF_MONTH, 1)
+                c.add(Calendar.DAY_OF_MONTH, (ordinal - 1) * 7)
+            }
+            if (c.get(Calendar.MONTH) == month && c.timeInMillis >= today.timeInMillis) {
+                cal.set(Calendar.YEAR, c.get(Calendar.YEAR)); cal.set(Calendar.MONTH, c.get(Calendar.MONTH))
+                cal.set(Calendar.DAY_OF_MONTH, c.get(Calendar.DAY_OF_MONTH))
+                return
+            }
+            year++
+        }
+    }
+
+    private fun Calendar.zeroTime() {
+        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
     }
 
     // Переводит календарь на ближайший указанный день недели (или +неделя для «следующий»)
