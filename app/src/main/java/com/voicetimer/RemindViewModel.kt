@@ -2,6 +2,7 @@ package com.voicetimer
 
 import android.app.Application
 import android.content.Intent
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import com.voicetimer.remind.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -145,6 +146,47 @@ class RemindViewModel(application: Application) : AndroidViewModel(application) 
     fun updateSchedule(h: ScheduleHours) {
         _schedule.value = h
         ScheduleSettings.save(app, h)
+    }
+
+    // ── Резервная копия (экспорт/импорт) ─────────────────────────────────────────
+
+    // Статус последней операции бэкапа — для показа тоста на экране настроек
+    private val _backupMessage = MutableStateFlow<String?>(null)
+    val backupMessage = _backupMessage.asStateFlow()
+    fun clearBackupMessage() { _backupMessage.value = null }
+
+    // Экспорт всех данных в выбранный пользователем файл (SAF). I/O — в фоне.
+    fun exportTo(uri: Uri) {
+        Thread {
+            val result = runCatching {
+                val json = BackupManager.export(app)
+                app.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(json.toByteArray(Charsets.UTF_8))
+                } ?: error("не удалось открыть файл для записи")
+            }
+            _backupMessage.value = result.fold(
+                onSuccess = { "Резервная копия сохранена" },
+                onFailure = { "Не удалось сохранить копию: ${it.message}" }
+            )
+        }.start()
+    }
+
+    // Восстановление всех данных из выбранного файла (замена всего). I/O — в фоне.
+    fun importFrom(uri: Uri) {
+        Thread {
+            val result = runCatching {
+                val text = app.contentResolver.openInputStream(uri)?.use { input ->
+                    input.readBytes().toString(Charsets.UTF_8)
+                } ?: error("не удалось открыть файл")
+                BackupManager.restore(app, text)
+            }
+            // подтягиваем восстановленные настройки в UI
+            result.onSuccess { _schedule.value = ScheduleSettings.load(app) }
+            _backupMessage.value = result.fold(
+                onSuccess = { "Восстановлено напоминаний: $it" },
+                onFailure = { "Не удалось восстановить: ${it.message}" }
+            )
+        }.start()
     }
 
     fun clearCalendarFlag() { _needCalendarPermission.value = false }
