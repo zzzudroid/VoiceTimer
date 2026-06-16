@@ -43,6 +43,9 @@ object ReminderStore {
         put("inCalendar", r.inCalendar)
         put("recurrence", r.recurrence.name)
         put("recurrenceInterval", r.recurrenceInterval)
+        // набор дней недели → JSON-массив; пустой не пишем (экономия и совместимость)
+        if (r.daysOfWeek.isNotEmpty()) put("daysOfWeek", JSONArray(r.daysOfWeek.sorted()))
+        if (r.dayOfMonth != null) put("dayOfMonth", r.dayOfMonth)
         put("createdAt", r.createdAt)
     }
 
@@ -55,6 +58,10 @@ object ReminderStore {
         inCalendar = o.optBoolean("inCalendar", false),
         recurrence = RecurrenceType.valueOf(o.optString("recurrence", "NONE")),
         recurrenceInterval = o.optInt("recurrenceInterval", 1),
+        daysOfWeek = o.optJSONArray("daysOfWeek")?.let { arr ->
+            (0 until arr.length()).map { arr.getInt(it) }.toSet()
+        } ?: emptySet(),
+        dayOfMonth = if (o.has("dayOfMonth")) o.getInt("dayOfMonth") else null,
         createdAt = o.optLong("createdAt", System.currentTimeMillis())
     )
 

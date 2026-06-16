@@ -79,6 +79,9 @@ dependencies {
     implementation("com.alphacephei:vosk-android:0.3.75@aar")
     implementation("net.java.dev.jna:jna:5.18.1@aar")
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // Юнит-тесты доменной логики (парсер, числительные, повторы) — чистый JVM, без эмулятора
+    testImplementation("junit:junit:4.13.2")
 }
 
 // Скачивает и распаковывает русскую модель Vosk в assets (модель не хранится в git).
