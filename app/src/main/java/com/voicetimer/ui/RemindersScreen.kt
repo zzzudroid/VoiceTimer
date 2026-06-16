@@ -134,7 +134,7 @@ private fun NewReminderView(viewModel: RemindViewModel, onMicClick: () -> Unit, 
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (preview.recurrence != RecurrenceType.NONE) Text(
-                        "🔁 повтор: ${recurrenceLabel(preview.recurrence, preview.triggerAt, preview.recurrenceInterval)}",
+                        "🔁 повтор: ${recurrenceLabel(preview.recurrence, preview.triggerAt, preview.recurrenceInterval, preview.daysOfWeek, preview.dayOfMonth)}",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary
                     )
                 }
@@ -294,7 +294,7 @@ private fun ReminderRow(r: Reminder, onToggleDone: () -> Unit, onEdit: () -> Uni
                     if (r.type == ReminderType.INEXACT) Text("≈", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.tertiary)
                     if (r.recurrence != RecurrenceType.NONE) Text(
-                        "🔁 ${recurrenceLabel(r.recurrence, r.triggerAt, r.recurrenceInterval)}",
+                        "🔁 ${recurrenceLabel(r.recurrence, r.triggerAt, r.recurrenceInterval, r.daysOfWeek, r.dayOfMonth)}",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                     if (r.inCalendar) Icon(Icons.Filled.Event, contentDescription = "В календаре",
                         modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -402,7 +402,23 @@ private fun formatShort(ms: Long): String {
 
 // Короткая подпись периодичности с правильным склонением дня недели.
 // interval > 1 → «каждые N дней/недель/месяцев/лет».
-private fun recurrenceLabel(rec: RecurrenceType, triggerAt: Long, interval: Int = 1): String {
+private fun recurrenceLabel(
+    rec: RecurrenceType, triggerAt: Long, interval: Int = 1,
+    daysOfWeek: Set<Int> = emptySet(), dayOfMonth: Int? = null
+): String {
+    // Наборы дней недели: «по будням» / «по выходным» / конкретный день
+    if (daysOfWeek.isNotEmpty()) {
+        val weekdays = setOf(Calendar.MONDAY, Calendar.TUESDAY, Calendar.WEDNESDAY, Calendar.THURSDAY, Calendar.FRIDAY)
+        val weekend = setOf(Calendar.SATURDAY, Calendar.SUNDAY)
+        return when {
+            daysOfWeek == weekdays -> "по будням"
+            daysOfWeek == weekend  -> "по выходным"
+            daysOfWeek.size == 1   -> recurrenceLabelEvery(RecurrenceType.WEEKLY, triggerAt)
+            else                   -> "по дням: " + daysOfWeek.sorted().joinToString(", ") { shortDow(it) }
+        }
+    }
+    // Ежемесячно по числу: «каждое 5 число»
+    if (rec == RecurrenceType.MONTHLY && dayOfMonth != null) return "каждое $dayOfMonth число"
     if (interval > 1) return when (rec) {
         RecurrenceType.DAILY   -> "каждые " + plural(interval.toLong(), "день", "дня", "дней")
         RecurrenceType.WEEKLY  -> "каждые " + plural(interval.toLong(), "неделю", "недели", "недель")
@@ -411,6 +427,12 @@ private fun recurrenceLabel(rec: RecurrenceType, triggerAt: Long, interval: Int 
         RecurrenceType.NONE    -> ""
     }
     return recurrenceLabelEvery(rec, triggerAt)
+}
+
+// Короткое имя дня недели (для произвольных наборов дней)
+private fun shortDow(dow: Int): String = when (dow) {
+    Calendar.MONDAY -> "пн"; Calendar.TUESDAY -> "вт"; Calendar.WEDNESDAY -> "ср"
+    Calendar.THURSDAY -> "чт"; Calendar.FRIDAY -> "пт"; Calendar.SATURDAY -> "сб"; else -> "вс"
 }
 
 // «каждый …» (interval = 1)

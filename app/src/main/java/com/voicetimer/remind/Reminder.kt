@@ -20,6 +20,12 @@ data class Reminder(
     val inCalendar: Boolean = false,
     val recurrence: RecurrenceType = RecurrenceType.NONE,
     val recurrenceInterval: Int = 1,   // «каждые N …»: шаг периода (1 = каждый)
+    // Набор дней недели (java.util.Calendar.DAY_OF_WEEK) для WEEKLY-наборов:
+    // «по будням» = пн–пт, «по выходным» = сб,вс, «каждый вторник» = {вторник}.
+    // Пусто → обычный недельный шаг от triggerAt.
+    val daysOfWeek: Set<Int> = emptySet(),
+    // Число месяца для MONTHLY («каждое 5 число»). null → день берётся из triggerAt.
+    val dayOfMonth: Int? = null,
     val createdAt: Long = System.currentTimeMillis()
 ) {
     // Следующий момент срабатывания для повторяющегося напоминания
@@ -30,8 +36,23 @@ data class Reminder(
         fun advance() {
             when (recurrence) {
                 RecurrenceType.DAILY   -> cal.add(java.util.Calendar.DAY_OF_MONTH, step)
-                RecurrenceType.WEEKLY  -> cal.add(java.util.Calendar.DAY_OF_MONTH, 7 * step)
-                RecurrenceType.MONTHLY -> cal.add(java.util.Calendar.MONTH, step)
+                RecurrenceType.WEEKLY  ->
+                    if (daysOfWeek.isNotEmpty()) {
+                        // следующий ближайший день из набора, час/минуты сохраняются
+                        do { cal.add(java.util.Calendar.DAY_OF_MONTH, 1) }
+                        while (cal.get(java.util.Calendar.DAY_OF_WEEK) !in daysOfWeek)
+                    } else {
+                        cal.add(java.util.Calendar.DAY_OF_MONTH, 7 * step)
+                    }
+                RecurrenceType.MONTHLY -> {
+                    cal.add(java.util.Calendar.MONTH, step)
+                    // привязка к числу месяца с корректным clamp (фикс «залипания» 29–31):
+                    // каждый раз берём канонический день, обрезая по длине месяца
+                    if (dayOfMonth != null) {
+                        val maxDay = cal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+                        cal.set(java.util.Calendar.DAY_OF_MONTH, dayOfMonth.coerceAtMost(maxDay))
+                    }
+                }
                 RecurrenceType.YEARLY  -> cal.add(java.util.Calendar.YEAR, step)
                 RecurrenceType.NONE    -> {}
             }
