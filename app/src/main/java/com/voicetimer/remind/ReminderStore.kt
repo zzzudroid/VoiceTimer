@@ -25,43 +25,50 @@ object ReminderStore {
             runCatching {
                 val arr = JSONArray(f.readText())
                 val list = ArrayList<Reminder>(arr.length())
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    list.add(
-                        Reminder(
-                            id = o.getLong("id"),
-                            text = o.getString("text"),
-                            triggerAt = o.getLong("triggerAt"),
-                            type = ReminderType.valueOf(o.optString("type", "EXACT")),
-                            done = o.optBoolean("done", false),
-                            inCalendar = o.optBoolean("inCalendar", false),
-                            recurrence = RecurrenceType.valueOf(o.optString("recurrence", "NONE")),
-                            recurrenceInterval = o.optInt("recurrenceInterval", 1),
-                            createdAt = o.optLong("createdAt", System.currentTimeMillis())
-                        )
-                    )
-                }
+                for (i in 0 until arr.length()) list.add(deserialize(arr.getJSONObject(i)))
                 _items.value = list.sortedBy { it.triggerAt }
             }
         }
         loaded = true
     }
 
+    // Сериализация одного напоминания в JSON. Используется и хранилищем, и бэкапом —
+    // чтобы формат не разъехался при добавлении новых полей.
+    fun serialize(r: Reminder): JSONObject = JSONObject().apply {
+        put("id", r.id)
+        put("text", r.text)
+        put("triggerAt", r.triggerAt)
+        put("type", r.type.name)
+        put("done", r.done)
+        put("inCalendar", r.inCalendar)
+        put("recurrence", r.recurrence.name)
+        put("recurrenceInterval", r.recurrenceInterval)
+        put("createdAt", r.createdAt)
+    }
+
+    fun deserialize(o: JSONObject): Reminder = Reminder(
+        id = o.getLong("id"),
+        text = o.getString("text"),
+        triggerAt = o.getLong("triggerAt"),
+        type = ReminderType.valueOf(o.optString("type", "EXACT")),
+        done = o.optBoolean("done", false),
+        inCalendar = o.optBoolean("inCalendar", false),
+        recurrence = RecurrenceType.valueOf(o.optString("recurrence", "NONE")),
+        recurrenceInterval = o.optInt("recurrenceInterval", 1),
+        createdAt = o.optLong("createdAt", System.currentTimeMillis())
+    )
+
+    // Полная замена списка (для восстановления из резервной копии «заменить всё»).
+    @Synchronized
+    fun replaceAll(context: Context, items: List<Reminder>) {
+        _items.value = items.sortedBy { it.triggerAt }
+        loaded = true
+        persist(context)
+    }
+
     private fun persist(context: Context) {
         val arr = JSONArray()
-        for (r in _items.value) {
-            arr.put(JSONObject().apply {
-                put("id", r.id)
-                put("text", r.text)
-                put("triggerAt", r.triggerAt)
-                put("type", r.type.name)
-                put("done", r.done)
-                put("inCalendar", r.inCalendar)
-                put("recurrence", r.recurrence.name)
-                put("recurrenceInterval", r.recurrenceInterval)
-                put("createdAt", r.createdAt)
-            })
-        }
+        for (r in _items.value) arr.put(serialize(r))
         File(context.filesDir, FILE_NAME).writeText(arr.toString())
     }
 
