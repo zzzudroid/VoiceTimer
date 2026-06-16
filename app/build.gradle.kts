@@ -15,6 +15,18 @@ val keystoreProps = Properties().apply {
     if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
 }
 
+// Версия сборки для экрана «О программе»: короткий git-хэш + пометка незакоммиченных
+// изменений. Хэш однозначно соответствует коммиту на GitHub (синхронизация версий).
+fun runGit(vararg args: String): String = try {
+    ProcessBuilder(listOf("git", *args))
+        .directory(rootDir).redirectErrorStream(true).start()
+        .inputStream.bufferedReader().readText().trim()
+} catch (e: Exception) { "" }
+
+val gitHash: String = runGit("rev-parse", "--short", "HEAD").ifEmpty { "unknown" }
+val gitDirty: Boolean = runGit("status", "--porcelain").isNotEmpty()
+val buildTime: String = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(java.util.Date())
+
 android {
     namespace = "com.voicetimer"
     compileSdk = 35
@@ -28,6 +40,10 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
+        // Данные о сборке для экрана «О программе»
+        buildConfigField("String", "GIT_HASH", "\"$gitHash\"")
+        buildConfigField("boolean", "GIT_DIRTY", "$gitDirty")
+        buildConfigField("String", "BUILD_TIME", "\"$buildTime\"")
     }
 
     signingConfigs {
@@ -58,6 +74,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources {

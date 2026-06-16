@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.voicetimer.BuildConfig
 import com.voicetimer.RemindViewModel
 import com.voicetimer.remind.ScheduleHours
 import java.text.SimpleDateFormat
@@ -132,6 +133,30 @@ fun SettingsScreen(viewModel: RemindViewModel) {
                 Text("Восстановить")
             }
         }
+
+        HorizontalDivider()
+
+        Text("О программе", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Версия ${BuildConfig.VERSION_NAME} (сборка ${BuildConfig.VERSION_CODE})",
+            style = MaterialTheme.typography.bodyLarge
+        )
+        Text(
+            "Коммит ${BuildConfig.GIT_HASH}" +
+                if (BuildConfig.GIT_DIRTY) " · есть несохранённые изменения" else "",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            "Собрано ${BuildConfig.BUILD_TIME}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            "github.com/zzzudroid/VoiceTimer",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
