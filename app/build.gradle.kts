@@ -1,5 +1,7 @@
 import java.io.File
 import java.net.URI
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Properties
 import java.util.zip.ZipInputStream
 
@@ -25,7 +27,7 @@ fun runGit(vararg args: String): String = try {
 
 val gitHash: String = runGit("rev-parse", "--short", "HEAD").ifEmpty { "unknown" }
 val gitDirty: Boolean = runGit("status", "--porcelain").isNotEmpty()
-val buildTime: String = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(java.util.Date())
+val buildTime: String = SimpleDateFormat("yyyy-MM-dd HH:mm").format(Date())
 
 android {
     namespace = "com.voicetimer"
