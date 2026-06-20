@@ -58,9 +58,14 @@ class ReminderAlarmService : Service() {
 
         // Повторяющееся — сразу планируем следующий период (серия продолжается)
         if (r.recurrence != RecurrenceType.NONE) {
-            val next = r.copy(triggerAt = r.nextTrigger(), done = false)
+            val next = r.copy(triggerAt = r.nextTrigger(), done = false, notified = false)
             ReminderStore.upsert(this, next)
             ReminderScheduler.schedule(this, next)
+        } else {
+            // Разовое — фиксируем, что оно уже прозвонило (но НЕ «выполнено»:
+            // done поставит только пользователь кнопкой «Готово»). Пока не подтвердил —
+            // оно остаётся активным и напомнит снова при следующем запуске программы.
+            ReminderStore.setNotified(this, id, true)
         }
 
         startForeground(notifId(id), buildNotif(r))
@@ -83,7 +88,10 @@ class ReminderAlarmService : Service() {
             )
             setDataSource(applicationContext, uri)
             isLooping = loud                 // громкий сигнал зациклен, мягкий — один раз
-            setOnCompletionListener { if (!loud) stopAll(markDone = true) }
+            // Мягкий звук отзвучал — НЕ помечаем выполненным (это сделает только
+            // «Готово»). Останавливаем сервис, но оставляем уведомление висеть,
+            // чтобы пользователь увидел его позже и подтвердил.
+            setOnCompletionListener { if (!loud) finishKeepingActive() }
             prepare()
             start()
         }
@@ -110,6 +118,16 @@ class ReminderAlarmService : Service() {
         nm().cancel(notifId(currentId))
         ringing.value = null
         stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    // Завершить проигрывание, НО оставить напоминание активным и уведомление
+    // на экране. done не ставим — пользователь ещё не подтвердил. Уведомление
+    // отвязываем от foreground (DETACH), поэтому оно не исчезает при остановке сервиса.
+    private fun finishKeepingActive() {
+        stopSound()
+        ringing.value = null
+        stopForeground(STOP_FOREGROUND_DETACH)
         stopSelf()
     }
 

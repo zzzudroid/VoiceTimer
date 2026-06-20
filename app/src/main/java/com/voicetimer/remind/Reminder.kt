@@ -16,7 +16,11 @@ data class Reminder(
     val text: String,            // что напомнить
     val triggerAt: Long,         // когда сработает (epoch ms)
     val type: ReminderType,
-    val done: Boolean = false,   // уже сработало/отмечено выполненным
+    val done: Boolean = false,   // выполнено — ставится ТОЛЬКО по нажатию «Готово» пользователем
+    // Звонило ли напоминание хоть раз. Нужно, чтобы сторож не названивал
+    // повторно по уже прозвучавшему (ждём явного «Готово»), но реально
+    // пропущенное (телефон был выключен) всё-таки прозвонило с опозданием.
+    val notified: Boolean = false,
     val inCalendar: Boolean = false,
     val recurrence: RecurrenceType = RecurrenceType.NONE,
     val recurrenceInterval: Int = 1,   // «каждые N …»: шаг периода (1 = каждый)

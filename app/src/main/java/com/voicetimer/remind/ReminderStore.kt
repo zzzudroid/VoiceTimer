@@ -40,6 +40,7 @@ object ReminderStore {
         put("triggerAt", r.triggerAt)
         put("type", r.type.name)
         put("done", r.done)
+        put("notified", r.notified)
         put("inCalendar", r.inCalendar)
         put("recurrence", r.recurrence.name)
         put("recurrenceInterval", r.recurrenceInterval)
@@ -55,6 +56,7 @@ object ReminderStore {
         triggerAt = o.getLong("triggerAt"),
         type = ReminderType.valueOf(o.optString("type", "EXACT")),
         done = o.optBoolean("done", false),
+        notified = o.optBoolean("notified", false),
         inCalendar = o.optBoolean("inCalendar", false),
         recurrence = RecurrenceType.valueOf(o.optString("recurrence", "NONE")),
         recurrenceInterval = o.optInt("recurrenceInterval", 1),
@@ -101,9 +103,21 @@ object ReminderStore {
         persist(context)
     }
 
+    // Отметить, что напоминание уже звонило (показано пользователю как сигнал).
+    @Synchronized
+    fun setNotified(context: Context, id: Long, notified: Boolean) {
+        load(context)
+        _items.value = _items.value.map { if (it.id == id) it.copy(notified = notified) else it }
+        persist(context)
+    }
+
     fun byId(id: Long): Reminder? = _items.value.firstOrNull { it.id == id }
 
     // Будущие, ещё не выполненные — для планирования будильников
     fun pending(): List<Reminder> =
         _items.value.filter { !it.done && it.triggerAt > System.currentTimeMillis() }
+
+    // Все невыполненные, включая просроченные — чтобы при перепланировании
+    // ни одно напоминание не «потерялось» (просроченные звонят с опозданием).
+    fun active(): List<Reminder> = _items.value.filter { !it.done }
 }
