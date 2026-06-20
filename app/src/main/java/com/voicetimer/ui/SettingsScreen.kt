@@ -12,8 +12,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.voicetimer.BuildConfig
 import com.voicetimer.RemindViewModel
+import com.voicetimer.remind.ReliabilityStatus
 import com.voicetimer.remind.ScheduleHours
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -66,10 +70,51 @@ fun SettingsScreen(viewModel: RemindViewModel) {
         )
     }
 
+    // Статус надёжности перечитываем при каждом возврате на экран
+    // (пользователь мог только что выдать разрешение в системных настройках).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var statusTick by remember { mutableStateOf(0) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) statusTick++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val exactOk = remember(statusTick) { ReliabilityStatus.canScheduleExact(context) }
+    val batteryOk = remember(statusTick) { ReliabilityStatus.isIgnoringBatteryOptimizations(context) }
+
     Column(
         Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
+        Text("Надёжность напоминаний", style = MaterialTheme.typography.titleLarge)
+        if (exactOk && batteryOk) {
+            Text(
+                "✓ Всё настроено — напоминания зазвонят даже в спящем режиме.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (!exactOk) {
+            ReliabilityWarning(
+                text = "Точные будильники запрещены — сигнал может задержаться или не прозвучать. " +
+                    "Разрешите «Будильники и напоминания».",
+                button = "Разрешить точные будильники",
+                onClick = { ReliabilityStatus.requestExactAlarm(context) }
+            )
+        }
+        if (!batteryOk) {
+            ReliabilityWarning(
+                text = "Включена оптимизация батареи — система может «усыпить» приложение и " +
+                    "пропустить напоминание. Отключите оптимизацию для VoiceTimer.",
+                button = "Отключить оптимизацию батареи",
+                onClick = { ReliabilityStatus.requestIgnoreBatteryOptimizations(context) }
+            )
+        }
+
+        HorizontalDivider()
+
         Text("Расписание дня", style = MaterialTheme.typography.titleLarge)
         Text(
             "Когда сказано только время суток («вечером») или просто день («завтра»), " +
@@ -157,6 +202,22 @@ fun SettingsScreen(viewModel: RemindViewModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+// Карточка-предупреждение о незаданном условии надёжности с кнопкой исправления.
+@Composable
+private fun ReliabilityWarning(text: String, button: String, onClick: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer
+        )
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("⚠ $text", style = MaterialTheme.typography.bodyMedium)
+            Button(onClick = onClick) { Text(button) }
+        }
     }
 }
 

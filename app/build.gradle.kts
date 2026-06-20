@@ -95,6 +95,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
     implementation("androidx.core:core-ktx:1.13.1")
+    // Периодический «сторож» напоминаний: переустанавливает будильники,
+    // если процесс выгрузили из памяти, а AlarmManager потерял срабатывание.
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("com.alphacephei:vosk-android:0.3.75@aar")
     implementation("net.java.dev.jna:jna:5.18.1@aar")
     debugImplementation("androidx.compose.ui:ui-tooling")

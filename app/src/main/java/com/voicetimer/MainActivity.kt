@@ -62,6 +62,12 @@ class MainActivity : ComponentActivity() {
 
         ensureExactAlarmPermission()
         com.voicetimer.remind.ReminderScheduler.rescheduleAll(applicationContext)
+        // При запуске программы повторно напоминаем о просроченных, которые
+        // пользователь ещё не отметил «Готово» — они не теряются и не «самовыполняются».
+        com.voicetimer.remind.ReminderScheduler.replayUnacknowledged(applicationContext)
+        // Запускаем периодический сторож — переустанавливает будильники, если
+        // прошивка убьёт процесс и отменит срабатывания AlarmManager.
+        com.voicetimer.remind.ReminderWatchdog.ensureScheduled(applicationContext)
 
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {

@@ -13,3 +13,6 @@ keystore.properties
 
 # Модель Vosk (~88 МБ) — не храним в git, тянется таской ./gradlew fetchVoskModel
 /app/src/main/assets/vosk-model-ru/
+
+# Локальные бэкапы APK (резерв перед заливкой на телефон) — не в репозиторий
+/dist/
