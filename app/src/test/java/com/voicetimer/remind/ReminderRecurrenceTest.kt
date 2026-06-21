@@ -78,6 +78,29 @@ class ReminderRecurrenceTest {
         assertEquals(Calendar.TUESDAY, field(next, Calendar.DAY_OF_WEEK))
     }
 
+    // ── Снуз (snoozedUntil) — разовое смещение поверх базы ────────────────────────
+
+    @Test fun snoozeDoesNotShiftRecurringBase() {
+        // Ежедневное в фиксированный час; пользователь отложил «на 10 минут».
+        // Снуз НЕ должен менять час следующего периода серии.
+        val base = pastTrigger(daysAgo = 0, hour = 21, minute = 15)
+        val r = Reminder(id = 1, text = "покормить рыбок", triggerAt = base,
+            type = ReminderType.EXACT, recurrence = RecurrenceType.DAILY,
+            snoozedUntil = System.currentTimeMillis() + 10 * 60_000L)
+        // эффективное срабатывание = отложенный момент
+        assertEquals(r.snoozedUntil, r.effectiveTrigger())
+        // следующий период по-прежнему в 21:15, а не в 21:25
+        val next = r.nextTrigger()
+        assertEquals(21, field(next, Calendar.HOUR_OF_DAY))
+        assertEquals(15, field(next, Calendar.MINUTE))
+    }
+
+    @Test fun effectiveTriggerFallsBackToBase() {
+        val base = pastTrigger(daysAgo = 0, hour = 8, minute = 0)
+        val r = Reminder(id = 1, text = "t", triggerAt = base, type = ReminderType.EXACT)
+        assertEquals(base, r.effectiveTrigger())
+    }
+
     @Test fun monthlyDay31ClampsAndRecovers() {
         // dayOfMonth=31: в коротких месяцах берётся последний день, без «залипания»
         val trigger = Calendar.getInstance().apply {

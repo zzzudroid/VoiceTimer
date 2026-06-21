@@ -56,16 +56,31 @@ class ReminderAlarmService : Service() {
         currentId = id
         val exact = r.type == ReminderType.EXACT
 
-        // Повторяющееся — сразу планируем следующий период (серия продолжается)
-        if (r.recurrence != RecurrenceType.NONE) {
-            val next = r.copy(triggerAt = r.nextTrigger(), done = false, notified = false)
-            ReminderStore.upsert(this, next)
-            ReminderScheduler.schedule(this, next)
-        } else {
+        when {
+            // Сработал отложенный снуз — это разовое смещение. Гасим его и
+            // возвращаем будильник на базовое время; серию/базу НЕ двигаем,
+            // поэтому циклическое сохранит исходный час следующих периодов.
+            r.snoozedUntil != null -> {
+                val cleared = r.copy(snoozedUntil = null)
+                ReminderStore.upsert(this, cleared)
+                if (cleared.recurrence != RecurrenceType.NONE &&
+                    cleared.triggerAt > System.currentTimeMillis()) {
+                    // снуз замещал будильник серии — переустанавливаем его на базу
+                    ReminderScheduler.schedule(this, cleared)
+                } else if (cleared.recurrence == RecurrenceType.NONE) {
+                    ReminderStore.setNotified(this, id, true)
+                }
+            }
+            // Повторяющееся — сразу планируем следующий период (серия продолжается)
+            r.recurrence != RecurrenceType.NONE -> {
+                val next = r.copy(triggerAt = r.nextTrigger(), done = false, notified = false, snoozedUntil = null)
+                ReminderStore.upsert(this, next)
+                ReminderScheduler.schedule(this, next)
+            }
             // Разовое — фиксируем, что оно уже прозвонило (но НЕ «выполнено»:
             // done поставит только пользователь кнопкой «Готово»). Пока не подтвердил —
             // оно остаётся активным и напомнит снова при следующем запуске программы.
-            ReminderStore.setNotified(this, id, true)
+            else -> ReminderStore.setNotified(this, id, true)
         }
 
         startForeground(notifId(id), buildNotif(r))
@@ -101,7 +116,10 @@ class ReminderAlarmService : Service() {
         val r = ReminderStore.byId(currentId)
         stopSound()
         if (r != null) {
-            val next = r.copy(triggerAt = System.currentTimeMillis() + minutes * 60_000L, done = false)
+            // Откладываем только это срабатывание через snoozedUntil. Базовый
+            // triggerAt (и серию циклического) НЕ трогаем — следующий период
+            // придёт в исходное время, а не сдвинется на длину снуза.
+            val next = r.copy(snoozedUntil = System.currentTimeMillis() + minutes * 60_000L, done = false)
             ReminderStore.upsert(this, next)
             ReminderScheduler.schedule(this, next)
         }

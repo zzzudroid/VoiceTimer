@@ -256,7 +256,9 @@ private fun AllRemindersView(viewModel: RemindViewModel, onBack: () -> Unit) {
             initial = r, calendarDefault = r.inCalendar,
             onDismiss = { editing = null },
             onSave = { text, time, type, _ ->
-                viewModel.updateReminder(r.copy(text = text, triggerAt = time, type = type)); editing = null
+                // Ручная правка времени сбрасывает активный снуз — иначе старое
+                // отложенное сработало бы раньше только что заданного времени.
+                viewModel.updateReminder(r.copy(text = text, triggerAt = time, type = type, snoozedUntil = null)); editing = null
             }
         )
     }
@@ -287,10 +289,13 @@ private fun ReminderRow(r: Reminder, onToggleDone: () -> Unit, onEdit: () -> Uni
                     color = if (r.done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(formatShort(r.triggerAt),
+                    // Показываем ближайшее срабатывание: при активном снузе это
+                    // отложенный момент, а не базовое время серии.
+                    Text(formatShort(r.effectiveTrigger()),
                         style = MaterialTheme.typography.bodySmall,
                         color = if (r.type == ReminderType.EXACT) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.tertiary)
+                    if (r.snoozedUntil != null) Text("😴", style = MaterialTheme.typography.bodySmall)
                     if (r.type == ReminderType.INEXACT) Text("≈", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.tertiary)
                     if (r.recurrence != RecurrenceType.NONE) Text(

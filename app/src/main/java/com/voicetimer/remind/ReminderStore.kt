@@ -47,6 +47,7 @@ object ReminderStore {
         // набор дней недели → JSON-массив; пустой не пишем (экономия и совместимость)
         if (r.daysOfWeek.isNotEmpty()) put("daysOfWeek", JSONArray(r.daysOfWeek.sorted()))
         if (r.dayOfMonth != null) put("dayOfMonth", r.dayOfMonth)
+        if (r.snoozedUntil != null) put("snoozedUntil", r.snoozedUntil)
         put("createdAt", r.createdAt)
     }
 
@@ -64,6 +65,7 @@ object ReminderStore {
             (0 until arr.length()).map { arr.getInt(it) }.toSet()
         } ?: emptySet(),
         dayOfMonth = if (o.has("dayOfMonth")) o.getInt("dayOfMonth") else null,
+        snoozedUntil = if (o.has("snoozedUntil")) o.getLong("snoozedUntil") else null,
         createdAt = o.optLong("createdAt", System.currentTimeMillis())
     )
 

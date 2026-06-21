@@ -39,11 +39,13 @@ object ReminderScheduler {
 
     fun schedule(context: Context, r: Reminder) {
         if (r.done) return
+        // Звоним по эффективному времени: активный снуз имеет приоритет над базой.
+        val target = r.effectiveTrigger()
         // Просроченное (телефон был выключен/процесс убит) — не теряем, а звоним
         // почти сразу. Так напоминание не может «молча исчезнуть».
-        val at = if (r.triggerAt <= System.currentTimeMillis())
+        val at = if (target <= System.currentTimeMillis())
             System.currentTimeMillis() + 1_000L
-        else r.triggerAt
+        else target
         armAt(context, r, at)
     }
 
@@ -59,9 +61,14 @@ object ReminderScheduler {
         ReminderStore.load(context)
         val now = System.currentTimeMillis()
         for (r in ReminderStore.active()) {
+            val eff = r.effectiveTrigger()
             when {
-                r.triggerAt > now ->
-                    armAt(context, r, r.triggerAt)
+                eff > now ->
+                    armAt(context, r, eff)
+                // Пропущенный снуз (база/серия не трогаются) — звоним с опозданием,
+                // сам снуз погасит fire().
+                r.snoozedUntil != null ->
+                    armAt(context, r, now + 1_000L)
                 r.recurrence != RecurrenceType.NONE -> {
                     // Пропущенный период серии — перескакиваем на ближайший будущий.
                     val next = r.copy(triggerAt = r.nextTrigger(), done = false, notified = false)
@@ -85,7 +92,9 @@ object ReminderScheduler {
         ReminderStore.load(context)
         val now = System.currentTimeMillis()
         for (r in ReminderStore.active()) {
-            if (r.recurrence == RecurrenceType.NONE && r.triggerAt <= now) {
+            // Учитываем активный снуз: если отложенный момент ещё в будущем —
+            // не звоним раньше времени.
+            if (r.recurrence == RecurrenceType.NONE && r.effectiveTrigger() <= now) {
                 armAt(context, r, now + 1_000L)
             }
         }
