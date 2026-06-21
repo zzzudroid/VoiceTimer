@@ -158,3 +158,9 @@ tasks.named("preBuild") {
     dependsOn("fetchVoskModel")
 }
 
+// BUILD_TIME должен отражать реальный момент сборки, а не «залипать» от прошлого
+// прогона. Задача генерации BuildConfig по умолчанию помечается UP-TO-DATE, если
+// исходники не менялись, — отключаем кэш именно для неё, чтобы дата всегда свежая.
+tasks.matching { it.name.startsWith("generate") && it.name.endsWith("BuildConfig") }
+    .configureEach { outputs.upToDateWhen { false } }
+

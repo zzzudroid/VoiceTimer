@@ -30,8 +30,17 @@ data class Reminder(
     val daysOfWeek: Set<Int> = emptySet(),
     // Число месяца для MONTHLY («каждое 5 число»). null → день берётся из triggerAt.
     val dayOfMonth: Int? = null,
+    // Разовое отложенное срабатывание поверх базы («отложить на 10 минут»).
+    // НЕ меняет triggerAt: для циклических серия продолжает идти от базового
+    // времени. Гасится в момент срабатывания. null → активного снуза нет.
+    val snoozedUntil: Long? = null,
     val createdAt: Long = System.currentTimeMillis()
 ) {
+    // Когда реально зазвонит: отложенный момент имеет приоритет над базой.
+    // Снуз всегда ставится в ближайшее будущее, поэтому он раньше следующего
+    // периода серии и срабатывает первым.
+    fun effectiveTrigger(): Long = snoozedUntil ?: triggerAt
+
     // Следующий момент срабатывания для повторяющегося напоминания
     fun nextTrigger(): Long {
         if (recurrence == RecurrenceType.NONE) return triggerAt
