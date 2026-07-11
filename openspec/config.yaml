@@ -1,0 +1,22 @@
+schema: spec-driven
+
+context: |
+  VoiceTimer — Android-приложение с голосовым управлением на русском языке:
+  таймер обратного отсчёта + напоминания на естественном языке (аналог «Помнить Всё»).
+
+  Стек: Kotlin + Jetpack Compose (HorizontalPager для вкладок), Android API 26+, compileSdk 35.
+  Распознавание речи: Vosk (офлайн, модель ~45 МБ, не хранится в git — тянется задачей
+  fetchVoskModel) и системный SpeechRecognizer (облачный, через Google, точнее для русского).
+  Таймер — ForegroundService + WakeLock; напоминания — AlarmManager + BroadcastReceiver
+  (точные/неточные, циклические серии, перепланирование после перезагрузки).
+
+  Сборка: ./gradlew assembleDebug (Windows: gradlew.bat). Release подписывается через
+  keystore.properties (в .gitignore, не хранится в репозитории).
+
+  Домен и терминология — на русском (UI, коммиты, документация, комментарии в коде).
+
+rules:
+  proposal:
+    - Описание и обоснование — на русском языке
+  tasks:
+    - Учитывать, что модель Vosk и keystore.properties не в git — не полагаться на их наличие в чистом клоне
