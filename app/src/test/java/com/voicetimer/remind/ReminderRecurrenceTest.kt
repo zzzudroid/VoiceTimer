@@ -95,6 +95,28 @@ class ReminderRecurrenceTest {
         assertEquals(15, field(next, Calendar.MINUTE))
     }
 
+    @Test fun snoozeOneHourDoesNotShiftRecurringBase() {
+        val base = pastTrigger(daysAgo = 0, hour = 21, minute = 15)
+        val r = Reminder(id = 1, text = "покормить рыбок", triggerAt = base,
+            type = ReminderType.EXACT, recurrence = RecurrenceType.DAILY,
+            snoozedUntil = System.currentTimeMillis() + 60 * 60_000L)
+        assertEquals(r.snoozedUntil, r.effectiveTrigger())
+        val next = r.nextTrigger()
+        assertEquals(21, field(next, Calendar.HOUR_OF_DAY))
+        assertEquals(15, field(next, Calendar.MINUTE))
+    }
+
+    @Test fun snoozeTwoHoursDoesNotShiftRecurringBase() {
+        val base = pastTrigger(daysAgo = 0, hour = 21, minute = 15)
+        val r = Reminder(id = 1, text = "покормить рыбок", triggerAt = base,
+            type = ReminderType.EXACT, recurrence = RecurrenceType.DAILY,
+            snoozedUntil = System.currentTimeMillis() + 120 * 60_000L)
+        assertEquals(r.snoozedUntil, r.effectiveTrigger())
+        val next = r.nextTrigger()
+        assertEquals(21, field(next, Calendar.HOUR_OF_DAY))
+        assertEquals(15, field(next, Calendar.MINUTE))
+    }
+
     @Test fun effectiveTriggerFallsBackToBase() {
         val base = pastTrigger(daysAgo = 0, hour = 8, minute = 0)
         val r = Reminder(id = 1, text = "t", triggerAt = base, type = ReminderType.EXACT)

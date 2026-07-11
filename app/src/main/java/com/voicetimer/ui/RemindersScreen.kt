@@ -40,7 +40,7 @@ fun RemindersScreen(viewModel: RemindViewModel, onMicClick: () -> Unit) {
             RingingBanner(
                 r,
                 onDone = { viewModel.stopRinging() },
-                onSnooze = { viewModel.snoozeRinging(10) }
+                onSnooze = { minutes -> viewModel.snoozeRinging(minutes) }
             )
         }
         if (showList) {
@@ -56,7 +56,7 @@ fun RemindersScreen(viewModel: RemindViewModel, onMicClick: () -> Unit) {
 private fun RingingBanner(
     r: com.voicetimer.remind.ReminderAlarmService.Ringing,
     onDone: () -> Unit,
-    onSnooze: () -> Unit
+    onSnooze: (minutes: Int) -> Unit
 ) {
     Card(
         Modifier.fillMaxWidth().padding(8.dp),
@@ -68,15 +68,15 @@ private fun RingingBanner(
             Text(r.text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onErrorContainer)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(
-                    onClick = onDone,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) { Text("⏹ Готово") }
-                OutlinedButton(onClick = onSnooze, modifier = Modifier.weight(1f)) {
-                    Text("Отложить 10 мин")
-                }
+                OutlinedButton(onClick = { onSnooze(10) }, modifier = Modifier.weight(1f)) { Text("10 мин") }
+                OutlinedButton(onClick = { onSnooze(60) }, modifier = Modifier.weight(1f)) { Text("1 час") }
+                OutlinedButton(onClick = { onSnooze(120) }, modifier = Modifier.weight(1f)) { Text("2 часа") }
             }
+            Button(
+                onClick = onDone,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) { Text("⏹ Готово") }
         }
     }
 }
