@@ -68,9 +68,17 @@ class VoiceRecognizer(
         }
     }
 
+    // Есть ли реальный доступ в интернет — ЛЮБОЙ сетью, включая случай активного VPN.
+    // Проверяем ВСЕ сети, а не только activeNetwork: при поднятом VPN «активной» становится
+    // VPN-сеть, которая может не отдавать INTERNET-capability, из-за чего интернет ошибочно
+    // считался отсутствующим и всегда выбирался офлайн-Vosk. VPN нам безразличен — достаточно,
+    // чтобы хоть одна сеть имела ПОДТВЕРЖДЁННЫЙ (VALIDATED) интернет.
     private fun isOnline(): Boolean {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
-        val caps = cm.getNetworkCapabilities(cm.activeNetwork ?: return false) ?: return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        return cm.allNetworks.any { net ->
+            val caps = cm.getNetworkCapabilities(net) ?: return@any false
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        }
     }
 }
