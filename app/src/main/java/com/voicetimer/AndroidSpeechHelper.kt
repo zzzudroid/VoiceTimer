@@ -25,6 +25,9 @@ class AndroidSpeechHelper(
     private val main = Handler(Looper.getMainLooper())
     private var retries = 0
     private val maxRetries = 2
+    // После остановки движок может независимо прислать и onResults, и onError —
+    // оба ведут к finishContinuous(). Флаг гарантирует единственный onFinal за сеанс.
+    private var finalized = false
 
     val isAvailable: Boolean get() = SpeechRecognizer.isRecognitionAvailable(context)
 
@@ -32,13 +35,18 @@ class AndroidSpeechHelper(
         if (!isAvailable) { onError("Голосовой сервис Google недоступен"); return }
         accumulated.clear()
         retries = 0
+        finalized = false
         listening = true
         startSession()
     }
 
     fun stop() {
         listening = false
-        recognizer?.stopListening()   // итог придёт в onResults
+        recognizer?.runCatching { stopListening() }   // итог обычно придёт в onResults
+        // Страховка: если recognizer уже «между сессиями»/idle и НЕ пришлёт колбэк на
+        // stopListening(), всё равно отдаём накопленное, чтобы черновик установился и
+        // «Сохранить» стала активной. finalized не даёт двойного onFinal.
+        main.postDelayed({ finishContinuous() }, 700)
     }
 
     fun destroy() {
@@ -57,6 +65,11 @@ class AndroidSpeechHelper(
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             // язык интерфейса запросов — русский (помогает онлайн-движку)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ru-RU")
+            // Дефолтная пауза тишины (~1-1.5с) короче времени реакции пользователя между
+            // окончанием фразы и нажатием «стоп» — движок успевает решить, что сегмент
+            // закончился, и услышимо перезапускает сессию раньше времени. Увеличиваем запас.
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
         }
         runCatching { recognizer?.startListening(intent) }
             .onFailure { onError("Ошибка запуска распознавания: ${it.message}") }
@@ -71,9 +84,18 @@ class AndroidSpeechHelper(
         b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
 
     private fun finishContinuous() {
+        if (finalized) return
+        finalized = true
+        listening = false
         val full = accumulated.toString().trim()
         accumulated.clear()
-        if (full.isNotBlank()) onFinal(full)
+        // Освобождаем recognizer вне текущего колбэка (destroy из самого колбэка
+        // небезопасен). Любой запоздалый колбэк уже отсечётся флагом finalized.
+        main.post { recognizer?.runCatching { destroy() }; recognizer = null }
+        // Всегда уведомляем UI об окончании сеанса (даже если распознали пусто) —
+        // иначе экран может «залипнуть» в состоянии прослушивания. Пустой текст просто
+        // вернёт черновик к пустому: пользователь увидит, что ничего не распозналось.
+        onFinal(full)
     }
 
     private val listener = object : RecognitionListener {
@@ -88,19 +110,24 @@ class AndroidSpeechHelper(
             val t = firstText(results)
             if (continuous) {
                 if (t.isNotBlank()) appendSegment(t)
-                if (listening) {
-                    onPartial(accumulated.toString().trim())
-                    main.post { if (listening) startSession() } // слушаем следующий сегмент
-                } else {
-                    finishContinuous()
-                }
+                // Google завершил распознавание фразы — СРАЗУ финализируем и НЕ
+                // перезапускаем сессию. Прежний перезапуск на каждом успешном результате
+                // давал лишний сигнал «слушаю снова» и гонку, из-за которой распознанный
+                // текст оставался в буфере, не попадал в черновик, и «Сохранить» была
+                // неактивна. Итог сразу уходит в onFinal → черновик → кнопка активна.
+                finishContinuous()
             } else if (t.isNotBlank()) {
                 onFinal(t)
             }
         }
 
         override fun onError(error: Int) {
-            // В continuous во время пауз приходят NO_MATCH/SPEECH_TIMEOUT — просто продолжаем
+            // Уже финализировали (успешный результат или ручная остановка) — игнорируем
+            // любые запоздалые ошибки завершившейся сессии, чтобы не показать ложную ошибку.
+            if (finalized) return
+            // В continuous во время пауз приходят NO_MATCH/SPEECH_TIMEOUT — переслушиваем.
+            // Это единственный случай перезапуска сессии (Google ничего не распознал),
+            // редкий и осознанный, а не на каждом успешном результате.
             if (continuous && listening &&
                 (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
             ) {

@@ -195,9 +195,9 @@ class ReminderAlarmService : Service() {
             .setContentIntent(openAppPi())
             .setAutoCancel(false)
             .setOngoing(true)
-            .addAction(android.R.drawable.ic_popup_reminder, "10 мин", actionPi(ACTION_SNOOZE, 11, 10))
+            .addAction(android.R.drawable.ic_popup_reminder, "5 минут", actionPi(ACTION_SNOOZE, 11, 5))
             .addAction(android.R.drawable.ic_popup_reminder, "1 час", actionPi(ACTION_SNOOZE, 12, 60))
-            .addAction(android.R.drawable.ic_popup_reminder, "2 часа", actionPi(ACTION_SNOOZE, 13, 120))
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Готово", actionPi(ACTION_STOP, 14))
         if (exact) {
             b.setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)

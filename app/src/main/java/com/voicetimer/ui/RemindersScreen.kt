@@ -137,6 +137,11 @@ private fun NewReminderView(viewModel: RemindViewModel, onMicClick: () -> Unit, 
                         "🔁 повтор: ${recurrenceLabel(preview.recurrence, preview.triggerAt, preview.recurrenceInterval, preview.daysOfWeek, preview.dayOfMonth)}",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary
                     )
+                    // Тема не распозналась — сохраним как «Напоминание» (можно уточнить текстом)
+                    if (preview.text.isBlank()) Text(
+                        "Тема не задана — сохранится как «${RemindViewModel.DEFAULT_REMINDER_TITLE}»",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
             draft.isNotBlank() ->
@@ -175,7 +180,7 @@ private fun NewReminderView(viewModel: RemindViewModel, onMicClick: () -> Unit, 
                     // null = сохранено успешно → переключаемся в «Все напоминания»
                     if (viewModel.saveDraft() == null) onOpenList()
                 },
-                enabled = preview != null && preview.text.isNotBlank(),
+                enabled = preview != null,   // время распознано → можно сохранить (тема необязательна)
                 modifier = Modifier.weight(1f)
             ) { Text("Сохранить") }
         }

@@ -11,6 +11,11 @@ import kotlinx.coroutines.flow.asStateFlow
 // ViewModel вкладки «Напоминания»: голосовой ввод, список, расписание дня.
 class RemindViewModel(application: Application) : AndroidViewModel(application) {
 
+    companion object {
+        // Заголовок по умолчанию, когда сказано только время без темы («напомни через минуту»).
+        const val DEFAULT_REMINDER_TITLE = "Напоминание"
+    }
+
     private val app = application
 
     val items = ReminderStore.items
@@ -89,9 +94,10 @@ class RemindViewModel(application: Application) : AndroidViewModel(application) 
         if (text.isBlank()) return "Введите или надиктуйте напоминание"
         val parsed = previewOf(text)
             ?: return "Не понял время. Например: «позвонить маме завтра в 9»"
-        if (parsed.text.isBlank())
-            return "Не понял, о чём напомнить. Например: «купить хлеб вечером»"
-        addReminder(parsed.text, parsed.triggerAt, parsed.type, _schedule.value.calendarByDefault,
+        // Тема необязательна: если сказано только время («напомни через минуту»),
+        // сохраняем как напоминание-будильник с заголовком по умолчанию.
+        val title = parsed.text.ifBlank { DEFAULT_REMINDER_TITLE }
+        addReminder(title, parsed.triggerAt, parsed.type, _schedule.value.calendarByDefault,
             parsed.recurrence, parsed.recurrenceInterval, parsed.daysOfWeek, parsed.dayOfMonth)
         _draft.value = ""
         _recognizedText.value = ""
